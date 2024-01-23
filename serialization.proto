@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package grpcapi;
+
+option go_package = "github.com/JyotinderSingh/golsm";
+
+enum Command {
+  PUT = 0;
+  DELETE = 1;
+}
+
+message MemtableEntry {
+    Command command = 1;
+    optional bytes value = 2;
+}
