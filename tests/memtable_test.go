@@ -128,3 +128,34 @@ func TestMemtableScanConsistency(t *testing.T) {
 	assert.Equal(t, 3000000, len(results), "Scan results were affected by concurrent operations.")
 	assert.Equal(t, 2992000, len(memtable.Scan("a", "z")), "data race between put and delete ops.")
 }
+
+// Test the Size() method of the Memtable.
+func TestMemtableSize(t *testing.T) {
+	memtable := golsm.NewMemtable()
+
+	// Test Size() with no entries.
+	assert.Equal(t, int64(0), memtable.SizeInBytes(), "memtable.Size() should return 0 with no entries")
+
+	// Test Size() with one entry.
+	memtable.Put("foo", []byte("bar"))
+	assert.Equal(t, int64(6), memtable.SizeInBytes(), "memtable.Size() should return 6 with one entry")
+
+	// Test Size() with multiple entries.
+	memtable.Put("foo", []byte("bar0"))
+	memtable.Put("foo8", []byte("bar8"))
+	memtable.Put("foo1", []byte("bar1"))
+	memtable.Put("foo7", []byte("bar7"))
+	memtable.Put("foo3", []byte("bar3"))
+	memtable.Put("foo9", []byte("bar9"))
+	memtable.Put("foo6", []byte("bar6"))
+	memtable.Put("foo2", []byte("bar2"))
+	memtable.Put("foo4", []byte("bar4"))
+	memtable.Put("foo5", []byte("bar5"))
+	assert.Equal(t, int64(79), memtable.SizeInBytes(), "memtable.Size() should return 79 with multiple entries")
+
+	// Test Size() with a deleted entry.
+	memtable.Delete("foo")
+	// We don't subtract the size of the key, since the key remains in the
+	// memtable with a tombstone marker.
+	assert.Equal(t, int64(75), memtable.SizeInBytes(), "memtable.Size() should return 75 with a deleted entry")
+}
