@@ -106,6 +106,7 @@ func (m *Memtable) Scan(startKey string, endKey string) [][]byte {
 	return results
 }
 
+// Get the size of the Memtable in bytes.
 func (m *Memtable) SizeInBytes() int64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
