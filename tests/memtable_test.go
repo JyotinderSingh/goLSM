@@ -2,7 +2,9 @@ package tests
 
 import (
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	golsm "github.com/JyotinderSingh/go-lsm"
 	"github.com/stretchr/testify/assert"
@@ -82,4 +84,47 @@ func TestMemtableScan(t *testing.T) {
 		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i], "memtable.Scan(\"fo\", \"foo3\") should return [\"bar0\", \"bar1\", \"bar2\", \"bar3\"]")
 	}
 
+}
+
+func TestMemtableScanConsistency(t *testing.T) {
+	memtable := golsm.NewMemtable()
+
+	// Populate the memtable with a large number of entries
+	for i := 0; i < 3000000; i++ {
+		key := fmt.Sprintf("key%d", i)
+		value := []byte(fmt.Sprintf("value%d", i))
+		memtable.Put(key, value)
+	}
+
+	var wg sync.WaitGroup
+	results := [][]byte{}
+
+	// Start the Scan operation in its own goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		results = memtable.Scan("a", "z")
+	}()
+
+	// Wait a few milliseconds then start Put and Delete operations
+	time.Sleep(5 * time.Millisecond)
+
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			key := fmt.Sprintf("key%d", i)
+			if i%5 == 0 {
+				memtable.Put(key, []byte(fmt.Sprintf("newValue%d", i)))
+			} else {
+				memtable.Delete(key)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Validate the results
+	assert.Equal(t, 3000000, len(results), "Scan results were affected by concurrent operations.")
+	assert.Equal(t, 2992000, len(memtable.Scan("a", "z")), "data race between put and delete ops.")
 }
