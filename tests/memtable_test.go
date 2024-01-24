@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -95,6 +96,9 @@ func TestMemtableScanConsistency(t *testing.T) {
 		value := []byte(fmt.Sprintf("value%d", i))
 		memtable.Put(key, value)
 	}
+
+	// Ensuring that no values in memory are lost even after a GC run.
+	runtime.GC()
 
 	var wg sync.WaitGroup
 	results := [][]byte{}
