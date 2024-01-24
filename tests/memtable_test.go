@@ -163,3 +163,65 @@ func TestMemtableSize(t *testing.T) {
 	// memtable with a tombstone marker.
 	assert.Equal(t, int64(75), memtable.SizeInBytes(), "memtable.Size() should return 75 with a deleted entry")
 }
+
+// Test GetSerializableEntries() method of the Memtable. Performs a list of put and get operations. Then, it calls
+// GetSerializableEntries() and checks if the returned entries are correct.
+// The entries should be in sorted order. Deleted entries should be present with a tombstone.
+func TestMemtableGetSerializableEntries(t *testing.T) {
+	memtable := golsm.NewMemtable()
+
+	// Test GetSerializableEntries() with no entries.
+	entries := memtable.GetSerializableEntries()
+	assert.Equal(t, 0, len(entries), "memtable.GetSerializableEntries() should return 0 with no entries")
+
+	// Test GetSerializableEntries() with one entry.
+	memtable.Put("foo0", []byte("bar"))
+	entries = memtable.GetSerializableEntries()
+	assert.Equal(t, 1, len(entries), "memtable.GetSerializableEntries() should return 1 with one entry")
+	assert.Equal(t, "foo0", entries[0].Key, "memtable.GetSerializableEntries() should return [\"foo\"] with one entry")
+	assert.Equal(t, "bar", string(entries[0].Value.Value), "memtable.GetSerializableEntries() should return [\"bar\"] with one entry")
+	assert.Equal(t, golsm.Command_PUT, entries[0].Value.Command, "memtable.GetSerializableEntries() should return [PUT] with one entry")
+
+	// Test GetSerializableEntries() with multiple entries.
+	memtable.Put("foo0", []byte("bar0"))
+	memtable.Put("foo8", []byte("bar8"))
+	memtable.Put("foo1", []byte("bar1"))
+	memtable.Put("foo7", []byte("bar7"))
+	memtable.Put("foo3", []byte("bar3"))
+	memtable.Put("foo9", []byte("bar9"))
+	memtable.Put("foo6", []byte("bar6"))
+	memtable.Put("foo2", []byte("bar2"))
+	memtable.Put("foo4", []byte("bar4"))
+	memtable.Put("foo5", []byte("bar5"))
+	entries = memtable.GetSerializableEntries()
+	assert.Equal(t, 10, len(entries), "memtable.GetSerializableEntries() should return 10 with multiple entries")
+	for i := 0; i < 10; i++ {
+		assert.Equal(t, fmt.Sprintf("foo%d", i), entries[i].Key, "memtable.GetSerializableEntries() should return [\"foo0\", \"foo1\", ..., \"foo9\"] with multiple entries")
+		assert.Equal(t, []byte(fmt.Sprintf("bar%d", i)), entries[i].Value.Value, "memtable.GetSerializableEntries() should return [\"bar0\", \"bar1\", ..., \"bar9\"] with multiple entries")
+		assert.Equal(t, golsm.Command_PUT, entries[i].Value.Command, "memtable.GetSerializableEntries() should return [PUT] with multiple entries")
+	}
+
+	// Test GetSerializableEntries() with a deleted entry.
+	memtable.Delete("foo0")
+	memtable.Delete("foo8")
+	memtable.Delete("foo1")
+	// Delete entry not present in memtable.
+	memtable.Delete("z")
+
+	entries = memtable.GetSerializableEntries()
+	assert.Equal(t, 11, len(entries), "memtable.GetSerializableEntries() should return 10 with a deleted entry")
+	for i := 0; i < 10; i++ {
+		assert.Equal(t, fmt.Sprintf("foo%d", i), entries[i].Key, "memtable.GetSerializableEntries() should return [\"foo0\", \"foo1\", ..., \"foo9\"] with a deleted entry")
+		if i == 0 || i == 1 || i == 8 {
+			assert.Equal(t, golsm.Command_DELETE, entries[i].Value.Command, "memtable.GetSerializableEntries() should return [DELETE] with a deleted entry")
+			// Value should be nil.
+			assert.Nil(t, entries[i].Value.Value, "memtable.GetSerializableEntries() should return nil with a deleted entry")
+		} else {
+			assert.Equal(t, golsm.Command_PUT, entries[i].Value.Command, "memtable.GetSerializableEntries() should return [PUT] with a deleted entry")
+			assert.Equal(t, []byte(fmt.Sprintf("bar%d", i)), entries[i].Value.Value, "memtable.GetSerializableEntries() should return [\"bar0\", \"bar1\", ..., \"bar9\"] with a deleted entry")
+		}
+	}
+
+	// Check last entry.
+	assert.Equal(t, "z", entries[10].Key, "memtable.GetSerializableEntries() should return [\"z\"] with a deleted entry")
+}

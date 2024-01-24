@@ -10,6 +10,37 @@ enum Command {
 }
 
 message MemtableEntry {
-    Command command = 1;
-    optional bytes value = 2;
+  Command command = 1;
+  optional bytes value = 2;
+}
+
+enum SSTableEntryType {
+  BLOOM_FILTER = 0;
+  INDEX = 1;
+  MEMTABLE_ENTRY = 2;
+}
+
+message SSTableEntry {
+  SSTableEntryType type = 1;
+  optional BloomFilter bloom_filter = 2;
+  optional Index index = 3;
+  optional MemtableKeyValue memtable_entry = 4;
+}
+
+message BloomFilter {
+  repeated uint32 hashes = 1;
+}
+
+message IndexEntry {
+  string key = 1;
+  uint32 offset = 2;
+}
+
+message Index {
+  repeated IndexEntry entries = 1;   
+}
+
+message MemtableKeyValue {
+  string key = 1;
+  MemtableEntry value = 2;
 }

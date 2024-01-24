@@ -113,3 +113,21 @@ func (m *Memtable) SizeInBytes() int64 {
 
 	return m.size
 }
+
+// Generates serializable list of memtable entries in sorted order for SSTable.
+func (m *Memtable) GetSerializableEntries() []*MemtableKeyValue {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var results []*MemtableKeyValue
+	iter := m.data.Front()
+	for iter != nil {
+		results = append(results, &MemtableKeyValue{
+			Key:   iter.Element().Key().(string),
+			Value: iter.Value.(*MemtableEntry),
+		})
+		iter = iter.Next()
+	}
+
+	return results
+}
