@@ -114,6 +114,23 @@ func (m *Memtable) SizeInBytes() int64 {
 	return m.size
 }
 
+// Clears the Memtable.
+func (m *Memtable) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.data.Init()
+	m.size = 0
+}
+
+// Get the number of entries in the Memtable. Includes tombstones.
+func (m *Memtable) Len() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.data.Len()
+}
+
 // Generates serializable list of memtable entries in sorted order for SSTable.
 func (m *Memtable) GetSerializableEntries() []*MemtableKeyValue {
 	m.mu.RLock()

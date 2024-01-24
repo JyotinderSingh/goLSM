@@ -225,3 +225,41 @@ func TestMemtableGetSerializableEntries(t *testing.T) {
 	// Check last entry.
 	assert.Equal(t, "z", entries[10].Key, "memtable.GetSerializableEntries() should return [\"z\"] with a deleted entry")
 }
+
+// Test Clear() method of the Memtable. Performs a list of put and get operations. Then, it calls
+// Clear() and checks if the memtable is empty.
+func TestMemtableClear(t *testing.T) {
+	memtable := golsm.NewMemtable()
+
+	// Test Clear() with no entries.
+	memtable.Clear()
+	assert.Equal(t, int(0), memtable.Len(), "memtable.Len() should return 0 with no entries")
+	assert.Equal(t, int64(0), memtable.SizeInBytes(), "memtable.SizeInBytes() should return 0 with no entries")
+
+	// Test Clear() with one entry.
+	memtable.Put("foo", []byte("bar"))
+	memtable.Clear()
+	assert.Equal(t, int(0), memtable.Len(), "memtable.Len() should return 0 with no entries")
+	assert.Equal(t, int64(0), memtable.SizeInBytes(), "memtable.SizeInBytes() should return 0 with one entry")
+
+	// Test Clear() with multiple entries.
+	memtable.Put("foo0", []byte("bar0"))
+	memtable.Put("foo8", []byte("bar8"))
+	memtable.Put("foo1", []byte("bar1"))
+	memtable.Put("foo7", []byte("bar7"))
+	memtable.Put("foo3", []byte("bar3"))
+	memtable.Put("foo9", []byte("bar9"))
+	memtable.Put("foo6", []byte("bar6"))
+	memtable.Put("foo2", []byte("bar2"))
+	memtable.Put("foo4", []byte("bar4"))
+	memtable.Put("foo5", []byte("bar5"))
+	memtable.Clear()
+	assert.Equal(t, int(0), memtable.Len(), "memtable.Len() should return 0 with no entries")
+	assert.Equal(t, int64(0), memtable.SizeInBytes(), "memtable.SizeInBytes() should return 0 with multiple entries")
+
+	// Test Clear() with a deleted entry.
+	memtable.Delete("foo")
+	memtable.Clear()
+	assert.Equal(t, int(0), memtable.Len(), "memtable.Len() should return 0 with no entries")
+	assert.Equal(t, int64(0), memtable.SizeInBytes(), "memtable.SizeInBytes() should return 0 with a deleted entry")
+}
