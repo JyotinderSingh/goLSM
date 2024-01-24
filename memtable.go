@@ -81,7 +81,7 @@ func (m *Memtable) Get(key string) []byte {
 }
 
 // Range scan the Memtable, inclusive of startKey and endKey.
-func (m *Memtable) Scan(startKey string, endKey string) [][]byte {
+func (m *Memtable) RangeScan(startKey string, endKey string) [][]byte {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

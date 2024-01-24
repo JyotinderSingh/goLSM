@@ -3,91 +3,19 @@ package golsm
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 	"os"
 )
 
-func WriteSSTableFromMemtable(messages []*MemtableKeyValue, filename string) error {
-	index, entriesBuffer, err := buildIndexAndEntriesBuffer(messages)
-	if err != nil {
-		return err
-	}
-
-	indexData := mustMarshal(&Index{Entries: index})
-	if err != nil {
-		return err
-	}
-
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	if err := binary.Write(file, binary.LittleEndian, int64(len(indexData))); err != nil {
-		return err
-	}
-	if _, err := file.Write(indexData); err != nil {
-		return err
-	}
-	if _, err := io.Copy(file, entriesBuffer); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func ReadEntryForKey(filename string, key string) ([]byte, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	index, err := readIndexFromFile(file)
-	if err != nil {
-		return nil, err
-	}
-
-	offset, found := findOffsetForKey(index, key)
-	if !found {
-		return nil, nil
-	}
-
-	if _, err := file.Seek(offset, io.SeekCurrent); err != nil {
-		return nil, err
-	}
-
-	size, err := readEntrySizeFromFile(file)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := readEntryDataFromFile(file, size)
-	if err != nil {
-		return nil, err
-	}
-
-	entry := &MemtableKeyValue{}
-	mustUnmarshal(data, entry)
-
-	if entry.GetValue().GetCommand() == Command_DELETE {
-		return nil, nil
-	}
-
-	return entry.GetValue().GetValue(), nil
-}
-
 func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) ([]*IndexEntry, *bytes.Buffer, error) {
 	var index []*IndexEntry
-	var currentOffset int64 = 0
+	var currentOffset OffsetSize = 0
 	entriesBuffer := &bytes.Buffer{}
 
 	for _, message := range messages {
 		data := mustMarshal(message)
-		entrySize := int64(len(data))
+		entrySize := OffsetSize(len(data))
 
-		index = append(index, &IndexEntry{Key: message.Key, Offset: currentOffset})
+		index = append(index, &IndexEntry{Key: message.Key, Offset: int64(currentOffset)})
 
 		if err := binary.Write(entriesBuffer, binary.LittleEndian, int64(entrySize)); err != nil {
 			return nil, nil, err
@@ -96,15 +24,15 @@ func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) ([]*IndexEntry, *b
 			return nil, nil, err
 		}
 
-		currentOffset += int64(binary.Size(entrySize)) + int64(entrySize)
+		currentOffset += OffsetSize(binary.Size(entrySize)) + OffsetSize(entrySize)
 	}
 
 	return index, entriesBuffer, nil
 }
 
 func readIndexFromFile(file *os.File) ([]*IndexEntry, error) {
-	var indexSize int64
-	if err := binary.Read(file, binary.LittleEndian, &indexSize); err != nil {
+	indexSize, err := readOffsetSize(file)
+	if err != nil {
 		return nil, err
 	}
 
@@ -119,24 +47,58 @@ func readIndexFromFile(file *os.File) ([]*IndexEntry, error) {
 	return index.Entries, nil
 }
 
-func findOffsetForKey(index []*IndexEntry, key string) (int64, bool) {
-	for _, entry := range index {
-		if entry.Key == key {
-			return entry.Offset, true
+// Binary search for the offset of the key in the index.
+func findOffsetForKey(index []*IndexEntry, key string) (OffsetSize, bool) {
+	low := 0
+	high := len(index) - 1
+	for low <= high {
+		mid := (low + high) / 2
+		if index[mid].Key == key {
+			return OffsetSize(index[mid].Offset), true
+		} else if index[mid].Key < key {
+			low = mid + 1
+		} else {
+			high = mid - 1
 		}
 	}
+
 	return 0, false
 }
 
-func readEntrySizeFromFile(file *os.File) (int64, error) {
-	var size int64
+// Find Start offset for a range scan, inclusive of startKey.
+// This is the smallest key >= startKey. Performs a binary search on the index.
+func findStartOffsetForRangeScan(index []*IndexEntry, startKey string) (OffsetSize, bool) {
+	low := 0
+	high := len(index) - 1
+	for low <= high {
+		mid := (low + high) / 2
+		if index[mid].Key == startKey {
+			return OffsetSize(index[mid].Offset), true
+		} else if index[mid].Key < startKey {
+			low = mid + 1
+		} else {
+			high = mid - 1
+		}
+	}
+
+	// If the key is not found, low will be the index of the smallest key > startKey.
+	if low >= len(index) {
+		return 0, false
+	}
+
+	return OffsetSize(index[low].Offset), true
+}
+
+// Read the size of the entry from the file.
+func readOffsetSize(file *os.File) (OffsetSize, error) {
+	var size OffsetSize
 	if err := binary.Read(file, binary.LittleEndian, &size); err != nil {
 		return 0, err
 	}
 	return size, nil
 }
 
-func readEntryDataFromFile(file *os.File, size int64) ([]byte, error) {
+func readEntryDataFromFile(file *os.File, size OffsetSize) ([]byte, error) {
 	data := make([]byte, size)
 	if _, err := file.Read(data); err != nil {
 		return nil, err
