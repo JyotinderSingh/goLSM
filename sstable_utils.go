@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) ([]*IndexEntry, *bytes.Buffer, error) {
+func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) (*Index, *bytes.Buffer, error) {
 	var index []*IndexEntry
 	var currentOffset OffsetSize = 0
 	entriesBuffer := &bytes.Buffer{}
@@ -27,7 +27,7 @@ func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) ([]*IndexEntry, *b
 		currentOffset += OffsetSize(binary.Size(entrySize)) + OffsetSize(entrySize)
 	}
 
-	return index, entriesBuffer, nil
+	return &Index{Entries: index}, entriesBuffer, nil
 }
 
 func readIndexFromFile(file *os.File) ([]*IndexEntry, error) {

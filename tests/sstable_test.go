@@ -28,25 +28,25 @@ func TestSSTable(t *testing.T) {
 	assert.Equal(t, []byte(nil), memtable.Get("key4"))
 
 	// Write the memtable to an SSTable.
-	err := golsm.WriteSSTableFromMemtable(memtable.GetSerializableEntries(), testFileName)
+	sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 	assert.Nil(t, err)
 
 	// Read the SSTable and verify the contents.
-	entry, err := golsm.ReadEntryForKey(testFileName, "key1")
+	entry, err := sstable.Get("key1")
 	assert.Nil(t, err)
 	assert.Equal(t, []byte("value1"), entry)
 
-	entry, err = golsm.ReadEntryForKey(testFileName, "key3")
+	entry, err = sstable.Get("key3")
 	assert.Nil(t, err)
 	assert.Equal(t, []byte("value3"), entry)
 
 	// Read deleted entry.
-	entry, err = golsm.ReadEntryForKey(testFileName, "key2")
+	entry, err = sstable.Get("key2")
 	assert.Nil(t, err)
 	assert.Equal(t, []byte(nil), entry)
 
 	// Read non-existent entry.
-	entry, err = golsm.ReadEntryForKey(testFileName, "key6")
+	entry, err = sstable.Get("key6")
 	assert.Nil(t, err)
 	assert.Equal(t, []byte(nil), entry)
 }
@@ -62,11 +62,11 @@ func TestRangeScan(t *testing.T) {
 	populateMemtableWithTestData(memtable)
 
 	// Write the memtable to an SSTable.
-	err := golsm.WriteSSTableFromMemtable(memtable.GetSerializableEntries(), testFileName)
+	sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 	assert.Nil(t, err)
 
 	// Range scan the SSTable.
-	entries, err := golsm.RangeScan(testFileName, "key1", "key5")
+	entries, err := sstable.RangeScan("key1", "key5")
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(entries))
 	assert.Equal(t, []byte("value1"), entries[0])
@@ -85,11 +85,11 @@ func TestRangeScanNonExistentRange(t *testing.T) {
 	populateMemtableWithTestData(memtable)
 
 	// Write the memtable to an SSTable.
-	err := golsm.WriteSSTableFromMemtable(memtable.GetSerializableEntries(), testFileName)
+	sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 	assert.Nil(t, err)
 
 	// Range scan the SSTable.
-	entries, err := golsm.RangeScan(testFileName, "key6", "key7")
+	entries, err := sstable.RangeScan("key6", "key7")
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(entries))
 }
@@ -105,11 +105,11 @@ func TestRangeScanNonExactRange1(t *testing.T) {
 	populateMemtableWithTestData(memtable)
 
 	// Write the memtable to an SSTable.
-	err := golsm.WriteSSTableFromMemtable(memtable.GetSerializableEntries(), testFileName)
+	sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 	assert.Nil(t, err)
 
 	// Range scan the SSTable.
-	entries, err := golsm.RangeScan(testFileName, "a", "z")
+	entries, err := sstable.RangeScan("a", "z")
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(entries))
 	assert.Equal(t, []byte("value1"), entries[0])
@@ -128,11 +128,11 @@ func TestRangeScanNonExactRange2(t *testing.T) {
 	populateMemtableWithTestData(memtable)
 
 	// Write the memtable to an SSTable.
-	err := golsm.WriteSSTableFromMemtable(memtable.GetSerializableEntries(), testFileName)
+	sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 	assert.Nil(t, err)
 
 	// Range scan the SSTable.
-	entries, err := golsm.RangeScan(testFileName, "z", "za")
+	entries, err := sstable.RangeScan("z", "za")
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(entries))
 }
