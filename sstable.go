@@ -10,8 +10,8 @@ import (
 type OffsetSize int64
 
 type SSTable struct {
-	Index      *Index     // Index of the SSTable
-	File       *os.File   // File handle for the on-disk SSTable file.
+	index      *Index     // Index of the SSTable
+	file       *os.File   // File handle for the on-disk SSTable file.
 	dataOffset OffsetSize // Offset from where the actual entries begin
 }
 
@@ -42,6 +42,8 @@ func SerializeToSSTable(messages []*MemtableKeyValue, filename string) (*SSTable
 	if err != nil {
 		return nil, err
 	}
+	// Close the file opened for writing.
+	defer file.Close()
 
 	// Offset from where the actual entries begin
 	var dataOffset OffsetSize = 0
@@ -64,39 +66,68 @@ func SerializeToSSTable(messages []*MemtableKeyValue, filename string) (*SSTable
 		return nil, err
 	}
 
-	// Close the file opened for writing.
-	file.Close()
-
-	// Offset from where the actual entries begin
-
 	// Open file for reading
 	file, err = os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
-	return &SSTable{Index: index, File: file, dataOffset: dataOffset}, nil
+	return &SSTable{index: index, file: file, dataOffset: dataOffset}, nil
+}
+
+// Opens an SSTable file for reading and returns a handle to it.
+func OpenSSTable(filename string) (*SSTable, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// Offset from where the actual entries begin.
+	var dataOffset OffsetSize = 0
+
+	indexSize, err := readOffsetSize(file)
+	if err != nil {
+		return nil, err
+	}
+	dataOffset += OffsetSize(binary.Size(indexSize))
+
+	indexData := make([]byte, indexSize)
+	bytesRead, err := file.Read(indexData)
+	if err != nil {
+		return nil, err
+	}
+
+	dataOffset += OffsetSize(bytesRead)
+
+	index := &Index{}
+	mustUnmarshal(indexData, index)
+
+	return &SSTable{index: index, file: file, dataOffset: dataOffset}, nil
+}
+
+func (s *SSTable) Close() error {
+	return s.file.Close()
 }
 
 // Reads the value for a given key from the SSTable. Returns nil if the key is
 // not found.
 func (s *SSTable) Get(key string) ([]byte, error) {
-	offset, found := findOffsetForKey(s.Index.Entries, key)
+	offset, found := findOffsetForKey(s.index.Entries, key)
 	if !found {
 		return nil, nil
 	}
 
 	// Seek to the offset of the entry in the file. The offset is relative to the
 	// start of the entries data therefore we add the dataOffset to it.
-	if _, err := s.File.Seek(int64(offset)+int64(s.dataOffset), io.SeekStart); err != nil {
+	if _, err := s.file.Seek(int64(offset)+int64(s.dataOffset), io.SeekStart); err != nil {
 		return nil, err
 	}
 
-	size, err := readOffsetSize(s.File)
+	size, err := readOffsetSize(s.file)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := readEntryDataFromFile(s.File, size)
+	data, err := readEntryDataFromFile(s.file, size)
 	if err != nil {
 		return nil, err
 	}
@@ -115,18 +146,18 @@ func (s *SSTable) Get(key string) ([]byte, error) {
 // RangeScan returns all the values in the SSTable between startKey and endKey
 // inclusive.
 func (s *SSTable) RangeScan(startKey string, endKey string) ([][]byte, error) {
-	startOffset, found := findStartOffsetForRangeScan(s.Index.Entries, startKey)
+	startOffset, found := findStartOffsetForRangeScan(s.index.Entries, startKey)
 	if !found {
 		return nil, nil
 	}
 
-	if _, err := s.File.Seek(int64(startOffset)+int64(s.dataOffset), io.SeekCurrent); err != nil {
+	if _, err := s.file.Seek(int64(startOffset)+int64(s.dataOffset), io.SeekStart); err != nil {
 		return nil, err
 	}
 
 	var results [][]byte
 	for {
-		size, err := readOffsetSize(s.File)
+		size, err := readOffsetSize(s.file)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -134,7 +165,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([][]byte, error) {
 			return nil, err
 		}
 
-		data, err := readEntryDataFromFile(s.File, size)
+		data, err := readEntryDataFromFile(s.file, size)
 		if err != nil {
 			return nil, err
 		}

@@ -30,23 +30,6 @@ func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) (*Index, *bytes.Bu
 	return &Index{Entries: index}, entriesBuffer, nil
 }
 
-func readIndexFromFile(file *os.File) ([]*IndexEntry, error) {
-	indexSize, err := readOffsetSize(file)
-	if err != nil {
-		return nil, err
-	}
-
-	indexData := make([]byte, indexSize)
-	if _, err := file.Read(indexData); err != nil {
-		return nil, err
-	}
-
-	index := &Index{}
-	mustUnmarshal(indexData, index)
-
-	return index.Entries, nil
-}
-
 // Binary search for the offset of the key in the index.
 func findOffsetForKey(index []*IndexEntry, key string) (OffsetSize, bool) {
 	low := 0
