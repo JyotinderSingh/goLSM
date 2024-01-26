@@ -11,6 +11,7 @@ import (
 )
 
 func TestLSMTreePut(t *testing.T) {
+	t.Parallel()
 	dir := "TestLSMTreePut"
 	l, err := golsm.OpenLSMTree(dir, 1000)
 	assert.Nil(t, err)
@@ -29,6 +30,7 @@ func TestLSMTreePut(t *testing.T) {
 
 // Write a thousand key-value pairs to the LSMTree and check that they all exist.
 func TestLSMTreePutMany(t *testing.T) {
+	t.Parallel()
 	dir := "TestLSMTreePutMany"
 	l, err := golsm.OpenLSMTree(dir, 100)
 	assert.Nil(t, err)
@@ -52,12 +54,13 @@ func TestLSMTreePutMany(t *testing.T) {
 // Checks SSTable loading on startup. Writes entries to the LSMTree, closes it,
 // and then opens it again. Checks that the entries are still there.
 func TestLSMTreeSSTableLoading(t *testing.T) {
+	t.Parallel()
 	dir := "TestLSMTreeSSTableLoading"
 	l, err := golsm.OpenLSMTree(dir, 100)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
 		assert.Nil(t, err)
 	}
@@ -67,27 +70,50 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 	l, err = golsm.OpenLSMTree(dir, 100)
 	assert.Nil(t, err)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		value, err := l.Get(fmt.Sprintf("%d", i))
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
 	}
+
+	for i := 1000; i < 2000; i++ {
+		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
+		assert.Nil(t, err)
+	}
+
+	l.Close()
+
+	l, err = golsm.OpenLSMTree(dir, 100)
+	assert.Nil(t, err)
+
+	for i := 0; i < 2000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+	}
+
+	l.Close()
+
 }
 
 // Stress test to check that the LSMTree can handle a large number of reads and
 // writes with a small memtable size.
 func TestLSMTreeStressTest(t *testing.T) {
+	t.Parallel()
 	dir := "TestLSMTreeStressTest"
 	l, err := golsm.OpenLSMTree(dir, 1000)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 
-	defer l.Close()
-
 	for i := 0; i < 100000; i++ {
 		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
 		assert.Nil(t, err)
 	}
+
+	l.Close()
+
+	l, err = golsm.OpenLSMTree(dir, 1000)
+	assert.Nil(t, err)
 
 	for i := 0; i < 100000; i++ {
 		value, err := l.Get(fmt.Sprintf("%d", i))
@@ -99,12 +125,11 @@ func TestLSMTreeStressTest(t *testing.T) {
 // Concurrently write a large number of writes to the LSMTree from multiple
 // goroutines.
 func TestLSMTreeConcurrentWrites(t *testing.T) {
+	t.Parallel()
 	dir := "TestLSMTreeConcurrentWrites"
 	l, err := golsm.OpenLSMTree(dir, 1000)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
-
-	defer l.Close()
 
 	var wg sync.WaitGroup
 	wg.Add(100)
@@ -120,6 +145,10 @@ func TestLSMTreeConcurrentWrites(t *testing.T) {
 	}
 
 	wg.Wait()
+	l.Close()
+
+	l, err = golsm.OpenLSMTree(dir, 1000)
+	assert.Nil(t, err)
 
 	// Read all the values back.
 	for i := 0; i < 100; i++ {
