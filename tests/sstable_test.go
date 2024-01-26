@@ -33,6 +33,7 @@ func TestSSTable(t *testing.T) {
 		// Write the memtable to an SSTable.
 		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 		assert.Nil(t, err)
+		defer sstable.Close()
 
 		// Read the SSTable and verify the contents.
 		entry, err := sstable.Get("key1")
@@ -83,6 +84,7 @@ func TestRangeScan(t *testing.T) {
 		// Write the memtable to an SSTable.
 		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 		assert.Nil(t, err)
+		defer sstable.Close()
 
 		if reopenFile {
 			if err := sstable.Close(); err != nil {
@@ -121,6 +123,7 @@ func TestRangeScanNonExistentRange(t *testing.T) {
 		// Write the memtable to an SSTable.
 		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 		assert.Nil(t, err)
+		defer sstable.Close()
 
 		if reopenFile {
 			if err := sstable.Close(); err != nil {
@@ -157,6 +160,7 @@ func TestRangeScanNonExactRange1(t *testing.T) {
 		// Write the memtable to an SSTable.
 		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 		assert.Nil(t, err)
+		defer sstable.Close()
 
 		if reopenFile {
 			if err := sstable.Close(); err != nil {
@@ -197,6 +201,7 @@ func TestRangeScanNonExactRange2(t *testing.T) {
 		// Write the memtable to an SSTable.
 		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
 		assert.Nil(t, err)
+		defer sstable.Close()
 
 		if reopenFile {
 			if err := sstable.Close(); err != nil {
