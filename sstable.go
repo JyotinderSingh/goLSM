@@ -1,18 +1,17 @@
 package golsm
 
 import (
-	"encoding/binary"
 	"io"
 	"os"
 )
 
 // Alias for int64 size
-type OffsetSize int64
+type EntrySize int64
 
 type SSTable struct {
-	index      *Index     // Index of the SSTable
-	file       *os.File   // File handle for the on-disk SSTable file.
-	dataOffset OffsetSize // Offset from where the actual entries begin
+	index      *Index    // Index of the SSTable
+	file       *os.File  // File handle for the on-disk SSTable file.
+	dataOffset EntrySize // Offset from where the actual entries begin
 }
 
 // Writes a list of MemtableKeyValue to a file in SSTable format.
@@ -34,43 +33,17 @@ func SerializeToSSTable(messages []*MemtableKeyValue, filename string) (*SSTable
 	}
 
 	indexData := mustMarshal(index)
+
+	dataOffset, err := writeSSTable(filename, indexData, entriesBuffer)
 	if err != nil {
 		return nil, err
 	}
 
-	file, err := os.Create(filename)
+	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
-	// Close the file opened for writing.
-	defer file.Close()
 
-	// Offset from where the actual entries begin
-	var dataOffset OffsetSize = 0
-
-	// Write the size of the index data.
-	if err := binary.Write(file, binary.LittleEndian, OffsetSize(len(indexData))); err != nil {
-		return nil, err
-	}
-	dataOffset += OffsetSize(binary.Size(OffsetSize(len(indexData))))
-
-	// Write the index data.
-	if _, err := file.Write(indexData); err != nil {
-		return nil, err
-	}
-
-	dataOffset += OffsetSize(len(indexData))
-
-	// Write the entries data.
-	if _, err := io.Copy(file, entriesBuffer); err != nil {
-		return nil, err
-	}
-
-	// Open file for reading
-	file, err = os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
 	return &SSTable{index: index, file: file, dataOffset: dataOffset}, nil
 }
 
@@ -81,25 +54,10 @@ func OpenSSTable(filename string) (*SSTable, error) {
 		return nil, err
 	}
 
-	// Offset from where the actual entries begin.
-	var dataOffset OffsetSize = 0
-
-	indexSize, err := readOffsetSize(file)
+	index, dataOffset, err := readSSTableMetadata(file)
 	if err != nil {
 		return nil, err
 	}
-	dataOffset += OffsetSize(binary.Size(indexSize))
-
-	indexData := make([]byte, indexSize)
-	bytesRead, err := file.Read(indexData)
-	if err != nil {
-		return nil, err
-	}
-
-	dataOffset += OffsetSize(bytesRead)
-
-	index := &Index{}
-	mustUnmarshal(indexData, index)
 
 	return &SSTable{index: index, file: file, dataOffset: dataOffset}, nil
 }
@@ -122,7 +80,7 @@ func (s *SSTable) Get(key string) ([]byte, error) {
 		return nil, err
 	}
 
-	size, err := readOffsetSize(s.file)
+	size, err := readDataSize(s.file)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +115,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([][]byte, error) {
 
 	var results [][]byte
 	for {
-		size, err := readOffsetSize(s.file)
+		size, err := readDataSize(s.file)
 		if err != nil {
 			if err == io.EOF {
 				break

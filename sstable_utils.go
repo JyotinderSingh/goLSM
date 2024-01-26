@@ -3,17 +3,18 @@ package golsm
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"os"
 )
 
 func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) (*Index, *bytes.Buffer, error) {
 	var index []*IndexEntry
-	var currentOffset OffsetSize = 0
+	var currentOffset EntrySize = 0
 	entriesBuffer := &bytes.Buffer{}
 
 	for _, message := range messages {
 		data := mustMarshal(message)
-		entrySize := OffsetSize(len(data))
+		entrySize := EntrySize(len(data))
 
 		index = append(index, &IndexEntry{Key: message.Key, Offset: int64(currentOffset)})
 
@@ -24,20 +25,20 @@ func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) (*Index, *bytes.Bu
 			return nil, nil, err
 		}
 
-		currentOffset += OffsetSize(binary.Size(entrySize)) + OffsetSize(entrySize)
+		currentOffset += EntrySize(binary.Size(entrySize)) + EntrySize(entrySize)
 	}
 
 	return &Index{Entries: index}, entriesBuffer, nil
 }
 
 // Binary search for the offset of the key in the index.
-func findOffsetForKey(index []*IndexEntry, key string) (OffsetSize, bool) {
+func findOffsetForKey(index []*IndexEntry, key string) (EntrySize, bool) {
 	low := 0
 	high := len(index) - 1
 	for low <= high {
 		mid := (low + high) / 2
 		if index[mid].Key == key {
-			return OffsetSize(index[mid].Offset), true
+			return EntrySize(index[mid].Offset), true
 		} else if index[mid].Key < key {
 			low = mid + 1
 		} else {
@@ -50,13 +51,13 @@ func findOffsetForKey(index []*IndexEntry, key string) (OffsetSize, bool) {
 
 // Find Start offset for a range scan, inclusive of startKey.
 // This is the smallest key >= startKey. Performs a binary search on the index.
-func findStartOffsetForRangeScan(index []*IndexEntry, startKey string) (OffsetSize, bool) {
+func findStartOffsetForRangeScan(index []*IndexEntry, startKey string) (EntrySize, bool) {
 	low := 0
 	high := len(index) - 1
 	for low <= high {
 		mid := (low + high) / 2
 		if index[mid].Key == startKey {
-			return OffsetSize(index[mid].Offset), true
+			return EntrySize(index[mid].Offset), true
 		} else if index[mid].Key < startKey {
 			low = mid + 1
 		} else {
@@ -69,22 +70,70 @@ func findStartOffsetForRangeScan(index []*IndexEntry, startKey string) (OffsetSi
 		return 0, false
 	}
 
-	return OffsetSize(index[low].Offset), true
+	return EntrySize(index[low].Offset), true
 }
 
 // Read the size of the entry from the file.
-func readOffsetSize(file *os.File) (OffsetSize, error) {
-	var size OffsetSize
+func readDataSize(file *os.File) (EntrySize, error) {
+	var size EntrySize
 	if err := binary.Read(file, binary.LittleEndian, &size); err != nil {
 		return 0, err
 	}
 	return size, nil
 }
 
-func readEntryDataFromFile(file *os.File, size OffsetSize) ([]byte, error) {
+func readEntryDataFromFile(file *os.File, size EntrySize) ([]byte, error) {
 	data := make([]byte, size)
 	if _, err := file.Read(data); err != nil {
 		return nil, err
 	}
 	return data, nil
+}
+
+func writeSSTable(filename string, indexData []byte, entriesBuffer io.Reader) (EntrySize, error) {
+	file, err := os.Create(filename)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	var dataOffset EntrySize = 0
+
+	if err := binary.Write(file, binary.LittleEndian, EntrySize(len(indexData))); err != nil {
+		return 0, err
+	}
+	dataOffset += EntrySize(binary.Size(EntrySize(len(indexData))))
+
+	if _, err := file.Write(indexData); err != nil {
+		return 0, err
+	}
+	dataOffset += EntrySize(len(indexData))
+
+	if _, err := io.Copy(file, entriesBuffer); err != nil {
+		return 0, err
+	}
+
+	return dataOffset, nil
+}
+
+func readSSTableMetadata(file *os.File) (*Index, EntrySize, error) {
+	var dataOffset EntrySize = 0
+
+	indexSize, err := readDataSize(file)
+	if err != nil {
+		return nil, 0, err
+	}
+	dataOffset += EntrySize(binary.Size(indexSize))
+
+	indexData := make([]byte, indexSize)
+	bytesRead, err := file.Read(indexData)
+	if err != nil {
+		return nil, 0, err
+	}
+	dataOffset += EntrySize(bytesRead)
+
+	index := &Index{}
+	mustUnmarshal(indexData, index)
+
+	return index, dataOffset, nil
 }
