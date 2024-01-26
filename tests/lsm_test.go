@@ -61,3 +61,38 @@ func TestLSMTreePutMany(t *testing.T) {
 		}
 	}
 }
+
+// Checks SSTable loading on startup. Writes entries to the LSMTree, closes it,
+// and then opens it again. Checks that the entries are still there.
+func TestLSMTreeSSTableLoading(t *testing.T) {
+	dir := "TestLSMTreeSSTableLoading"
+	l, err := golsm.OpenLSMTree(dir, 100)
+	if err != nil {
+		t.Errorf("OpenLSMTree returned error: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	for i := 0; i < 100; i++ {
+		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
+		if err != nil {
+			t.Errorf("Put returned error: %v", err)
+		}
+	}
+
+	l.Close()
+
+	l, err = golsm.OpenLSMTree(dir, 100)
+	if err != nil {
+		t.Errorf("OpenLSMTree returned error: %v", err)
+	}
+
+	for i := 0; i < 100; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		if err != nil {
+			t.Errorf("Get returned error: %v", err)
+		}
+		if string(value) != fmt.Sprintf("%d", i) {
+			t.Errorf("Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+		}
+	}
+}

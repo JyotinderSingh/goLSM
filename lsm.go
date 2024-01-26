@@ -3,7 +3,6 @@ package golsm
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 )
 
@@ -39,13 +38,13 @@ func OpenLSMTree(directory string, maxMemtableSize int64) (*LSMTree, error) {
 		directory:            directory,
 		current_sst_sequence: 0,
 		sstables:             make([]*SSTable, 0),
-		flushingQueue:        make([]*Memtable, 10),
+		flushingQueue:        make([]*Memtable, 0),
 		flushingChan:         make(chan *Memtable),
 		ctx:                  ctx,
 		cancel:               cancel,
 	}
 
-	if err := os.MkdirAll(lsm.directory, 0755); err != nil {
+	if err := lsm.loadSSTables(); err != nil {
 		return nil, err
 	}
 
