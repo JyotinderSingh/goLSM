@@ -33,6 +33,11 @@ type LSMTree struct {
 }
 
 // Create a new LSMTree.
+// directory: The directory where the SSTables will be stored.
+// maxMemtableSize: The maximum size of the memtable before it is flushed to an
+// SSTable.
+// On startup, the LSMTree will load all the SSTables handles (if any) from disk
+// into memory.
 func OpenLSMTree(directory string, maxMemtableSize int64) (*LSMTree, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lsm := &LSMTree{
@@ -60,6 +65,7 @@ func (l *LSMTree) Close() error {
 	l.addCurrentMemtableToFlushQueue()
 	l.cancel()
 	l.wg.Wait()
+	close(l.flushingChan)
 	return nil
 }
 
@@ -116,7 +122,7 @@ func (l *LSMTree) flushMemtablesInQueue() error {
 	}
 }
 
-// Flush a memtable to an SSTable.
+// Flush a memtable to an on-disk SSTable.
 func (l *LSMTree) flushMemtable(memtable *Memtable) {
 	l.current_sst_sequence++
 	sstableFileName := l.getSSTableFilename()
