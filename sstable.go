@@ -68,7 +68,7 @@ func (s *SSTable) Close() error {
 
 // Reads the value for a given key from the SSTable. Returns nil if the key is
 // not found.
-func (s *SSTable) Get(key string) ([]byte, error) {
+func (s *SSTable) Get(key string) (*MemtableEntry, error) {
 	offset, found := findOffsetForKey(s.index.Entries, key)
 	if !found {
 		return nil, nil
@@ -93,17 +93,15 @@ func (s *SSTable) Get(key string) ([]byte, error) {
 	entry := &MemtableKeyValue{}
 	mustUnmarshal(data, entry)
 
-	// If the entry is a tombstone, return nil
-	if entry.GetValue().GetCommand() == Command_DELETE {
-		return nil, nil
-	}
-
-	return entry.GetValue().GetValue(), nil
+	// We need to include the tombstones in the range scan. The caller will
+	// need to check the Command field of the MemtableEntry to determine if
+	// the entry is a tombstone.
+	return entry.Value, nil
 }
 
 // RangeScan returns all the values in the SSTable between startKey and endKey
 // inclusive.
-func (s *SSTable) RangeScan(startKey string, endKey string) ([][]byte, error) {
+func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, error) {
 	startOffset, found := findStartOffsetForRangeScan(s.index.Entries, startKey)
 	if !found {
 		return nil, nil
@@ -113,7 +111,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([][]byte, error) {
 		return nil, err
 	}
 
-	var results [][]byte
+	var results []*MemtableEntry
 	for {
 		size, err := readDataSize(s.file)
 		if err != nil {
@@ -135,11 +133,10 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([][]byte, error) {
 			break
 		}
 
-		if entry.GetValue().GetCommand() == Command_DELETE {
-			continue
-		}
-
-		results = append(results, entry.GetValue().GetValue())
+		// We need to include the tombstones in the range scan. The caller will
+		// need to check the Command field of the MemtableEntry to determine if
+		// the entry is a tombstone.
+		results = append(results, entry.GetValue())
 	}
 
 	return results, nil

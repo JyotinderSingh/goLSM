@@ -18,11 +18,14 @@ func TestMemtablePutGetDelete(t *testing.T) {
 
 	// Test Put() and Get().
 	memtable.Put("foo", []byte("bar"))
-	assert.Equal(t, []byte("bar"), memtable.Get("foo"), "memtable.Get(\"foo\") should return \"bar\"")
+	assert.Equal(t, []byte("bar"), memtable.Get("foo").Value, "memtable.Get(\"foo\") should return \"bar\"")
 
 	// Test Delete().
 	memtable.Delete("foo")
-	assert.Nil(t, memtable.Get("foo"), "memtable.Get(\"foo\") should return nil")
+	assert.Nil(t, memtable.Get("foo").Value, "memtable.Get(\"foo\") should return nil")
+
+	// Get non-existent key.
+	assert.Nil(t, memtable.Get("abc"), "memtable.Get(\"foo\") should return nil")
 }
 
 // Test the Scan() method of the Memtable.
@@ -39,7 +42,7 @@ func TestMemtableScan(t *testing.T) {
 	memtable.Put("foo", []byte("bar"))
 	results = memtable.RangeScan("foo", "foo")
 	assert.Len(t, results, 1, "memtable.Scan(\"foo\", \"foo\") should return a slice with length 1")
-	assert.Equal(t, []byte("bar"), results[0], "memtable.Scan(\"foo\", \"foo\") should return [\"bar\"]")
+	assert.Equal(t, []byte("bar"), results[0].Value, "memtable.Scan(\"foo\", \"foo\") should return [\"bar\"]")
 
 	// Test Scan() with multiple results.
 	memtable.Put("foo", []byte("bar0"))
@@ -55,14 +58,14 @@ func TestMemtableScan(t *testing.T) {
 	results = memtable.RangeScan("foo", "foo9")
 	assert.Len(t, results, 10, "memtable.Scan(\"foo\", \"foo9\") should return a slice with length 10")
 	for i := 0; i < 10; i++ {
-		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i], "memtable.Scan(\"foo\", \"foo9\") should return [\"bar0\", \"bar1\", ..., \"bar9\"]")
+		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i].Value, "memtable.Scan(\"foo\", \"foo9\") should return [\"bar0\", \"bar1\", ..., \"bar9\"]")
 	}
 
 	// Scan another range
 	results = memtable.RangeScan("foo2", "foo7")
 	assert.Len(t, results, 6, "memtable.Scan(\"foo2\", \"foo7\") should return a slice with length 6")
 	for i := 2; i < 8; i++ {
-		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i-2], "memtable.Scan(\"foo2\", \"foo7\") should return [\"bar2\", \"bar3\", ..., \"bar7\"]")
+		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i-2].Value, "memtable.Scan(\"foo2\", \"foo7\") should return [\"bar2\", \"bar3\", ..., \"bar7\"]")
 	}
 
 	// Scan another range with no results
@@ -72,20 +75,20 @@ func TestMemtableScan(t *testing.T) {
 	// Scan another range with one result
 	results = memtable.RangeScan("foo2", "foo2")
 	assert.Len(t, results, 1, "memtable.Scan(\"foo2\", \"foo2\") should return a slice with length 1")
-	assert.Equal(t, []byte("bar2"), results[0], "memtable.Scan(\"foo2\", \"foo2\") should return [\"bar2\"]")
+	assert.Equal(t, []byte("bar2"), results[0].Value, "memtable.Scan(\"foo2\", \"foo2\") should return [\"bar2\"]")
 
 	// Scan another range with non-exact start and end keys
 	results = memtable.RangeScan("foo2", "fooz")
 	assert.Len(t, results, 8, "memtable.Scan(\"foo2\", \"fooz\") should return a slice with length 8")
 	for i := 2; i < 10; i++ {
-		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i-2], "memtable.Scan(\"foo2\", \"fooz\") should return [\"bar2\", \"bar3\", ..., \"bar9\"]")
+		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i-2].Value, "memtable.Scan(\"foo2\", \"fooz\") should return [\"bar2\", \"bar3\", ..., \"bar9\"]")
 	}
 
 	// Scan another range with non-exact start and end keys
 	results = memtable.RangeScan("a", "foo3")
 	assert.Len(t, results, 4, "memtable.Scan(\"fo\", \"foo3\") should return a slice with length 4")
 	for i := 0; i < 4; i++ {
-		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i], "memtable.Scan(\"fo\", \"foo3\") should return [\"bar0\", \"bar1\", \"bar2\", \"bar3\"]")
+		assert.Equal(t, []byte(fmt.Sprintf("bar%v", i)), results[i].Value, "memtable.Scan(\"fo\", \"foo3\") should return [\"bar0\", \"bar1\", \"bar2\", \"bar3\"]")
 	}
 
 }
@@ -106,7 +109,7 @@ func TestMemtableScanConsistency(t *testing.T) {
 	runtime.GC()
 
 	var wg sync.WaitGroup
-	results := [][]byte{}
+	results := []*golsm.MemtableEntry{}
 
 	// Start the Scan operation in its own goroutine
 	wg.Add(1)
@@ -135,7 +138,14 @@ func TestMemtableScanConsistency(t *testing.T) {
 
 	// Validate the results
 	assert.Equal(t, 3000000, len(results), "Scan results were affected by concurrent operations.")
-	assert.Equal(t, 2992000, len(memtable.RangeScan("a", "z")), "data race between put and delete ops.")
+
+	var deletedEntries int = 0
+	for _, entry := range memtable.RangeScan("a", "z") {
+		if entry.Command == golsm.Command_DELETE {
+			deletedEntries++
+		}
+	}
+	assert.Equal(t, 8000, deletedEntries, "Scan results were affected by concurrent operations.")
 }
 
 // Test the Size() method of the Memtable.

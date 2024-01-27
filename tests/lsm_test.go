@@ -16,7 +16,6 @@ func TestLSMTreePut(t *testing.T) {
 	l, err := golsm.OpenLSMTree(dir, 1000)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
-	defer l.Close()
 
 	// Put a key-value pair into the LSMTree.
 	err = l.Put("key", []byte("value"))
@@ -26,6 +25,28 @@ func TestLSMTreePut(t *testing.T) {
 	value, err := l.Get("key")
 	assert.Nil(t, err)
 	assert.Equal(t, "value", string(value), "Expected value to be 'value', got '%v'", string(value))
+
+	// Delete the key-value pair from the LSMTree.
+	err = l.Delete("key")
+	assert.Nil(t, err)
+
+	// Check that the key-value pair no longer exists in the LSMTree.
+	value, err = l.Get("key")
+	assert.Nil(t, err)
+	assert.Nil(t, value, "Expected value to be nil, got '%v'", string(value))
+
+	l.Close()
+
+	// Check that the key-value pair still exists in the LSMTree after closing and
+	// reopening it.
+	l, err = golsm.OpenLSMTree(dir, 1000)
+	assert.Nil(t, err)
+
+	value, err = l.Get("key")
+	assert.Nil(t, err)
+	assert.Nil(t, value, "Expected value to be nil, got '%v'", string(value))
+
+	l.Close()
 }
 
 // Write a thousand key-value pairs to the LSMTree and check that they all exist.
@@ -72,6 +93,13 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
+	// Check that the key-value pairs exist.
+	for i := 0; i < 1000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+	}
+
 	l.Close()
 
 	l, err = golsm.OpenLSMTree(dir, 100)
@@ -88,6 +116,26 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
+	// Check that the key-value pairs exist.
+	for i := 0; i < 2000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+	}
+
+	// Delete range 400-600.
+	for i := 400; i < 600; i++ {
+		err := l.Delete(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+	}
+
+	// Check that these key-value pairs no longer exist.
+	for i := 400; i < 600; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Nil(t, value, "Expected value to be nil, got '%v'", string(value))
+	}
+
 	l.Close()
 
 	l, err = golsm.OpenLSMTree(dir, 100)
@@ -96,7 +144,11 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		value, err := l.Get(fmt.Sprintf("%d", i))
 		assert.Nil(t, err)
-		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+		if i >= 400 && i < 600 {
+			assert.Nil(t, value, "Expected value to be nil, got '%v'", string(value))
+		} else {
+			assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+		}
 	}
 
 	l.Close()

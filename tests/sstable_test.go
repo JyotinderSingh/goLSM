@@ -24,11 +24,11 @@ func TestSSTable(t *testing.T) {
 		populateMemtableWithTestData(memtable)
 
 		// Verify the contents of the tree.
-		assert.Equal(t, []byte("value1"), memtable.Get("key1"))
-		assert.Equal(t, []byte("value3"), memtable.Get("key3"))
-		assert.Equal(t, []byte("value5"), memtable.Get("key5"))
-		assert.Equal(t, []byte(nil), memtable.Get("key2"))
-		assert.Equal(t, []byte(nil), memtable.Get("key4"))
+		assert.Equal(t, []byte("value1"), memtable.Get("key1").Value)
+		assert.Equal(t, []byte("value3"), memtable.Get("key3").Value)
+		assert.Equal(t, []byte("value5"), memtable.Get("key5").Value)
+		assert.Equal(t, []byte(nil), memtable.Get("key2").Value)
+		assert.Equal(t, []byte(nil), memtable.Get("key4").Value)
 
 		// Write the memtable to an SSTable.
 		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
@@ -38,11 +38,11 @@ func TestSSTable(t *testing.T) {
 		// Read the SSTable and verify the contents.
 		entry, err := sstable.Get("key1")
 		assert.Nil(t, err)
-		assert.Equal(t, []byte("value1"), entry)
+		assert.Equal(t, []byte("value1"), entry.Value)
 
 		entry, err = sstable.Get("key3")
 		assert.Nil(t, err)
-		assert.Equal(t, []byte("value3"), entry)
+		assert.Equal(t, []byte("value3"), entry.Value)
 
 		if reopenFile {
 			if err := sstable.Close(); err != nil {
@@ -56,12 +56,12 @@ func TestSSTable(t *testing.T) {
 		// Read deleted entry.
 		entry, err = sstable.Get("key2")
 		assert.Nil(t, err)
-		assert.Equal(t, []byte(nil), entry)
+		assert.Equal(t, []byte(nil), entry.Value)
 
 		// Read non-existent entry.
 		entry, err = sstable.Get("key6")
 		assert.Nil(t, err)
-		assert.Equal(t, []byte(nil), entry)
+		assert.Nil(t, entry)
 
 		reopenFile = !reopenFile
 		os.Remove(testFileName)
@@ -98,10 +98,12 @@ func TestRangeScan(t *testing.T) {
 		// Range scan the SSTable.
 		entries, err := sstable.RangeScan("key1", "key5")
 		assert.Nil(t, err)
-		assert.Equal(t, 3, len(entries))
-		assert.Equal(t, []byte("value1"), entries[0])
-		assert.Equal(t, []byte("value3"), entries[1])
-		assert.Equal(t, []byte("value5"), entries[2])
+		assert.Equal(t, 5, len(entries))
+		assert.Equal(t, []byte("value1"), entries[0].Value)
+		assert.Equal(t, golsm.Command_DELETE, entries[1].Command)
+		assert.Equal(t, []byte("value3"), entries[2].Value)
+		assert.Equal(t, golsm.Command_DELETE, entries[3].Command)
+		assert.Equal(t, []byte("value5"), entries[4].Value)
 		os.Remove(testFileName)
 		reopenFile = !reopenFile
 	}
@@ -174,10 +176,12 @@ func TestRangeScanNonExactRange1(t *testing.T) {
 		// Range scan the SSTable.
 		entries, err := sstable.RangeScan("a", "z")
 		assert.Nil(t, err)
-		assert.Equal(t, 3, len(entries))
-		assert.Equal(t, []byte("value1"), entries[0])
-		assert.Equal(t, []byte("value3"), entries[1])
-		assert.Equal(t, []byte("value5"), entries[2])
+		assert.Equal(t, 5, len(entries))
+		assert.Equal(t, []byte("value1"), entries[0].Value)
+		assert.Equal(t, golsm.Command_DELETE, entries[1].Command)
+		assert.Equal(t, []byte("value3"), entries[2].Value)
+		assert.Equal(t, golsm.Command_DELETE, entries[3].Command)
+		assert.Equal(t, []byte("value5"), entries[4].Value)
 
 		reopenFile = !reopenFile
 		os.Remove(testFileName)

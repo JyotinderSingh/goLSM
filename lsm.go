@@ -149,7 +149,7 @@ func (l *LSMTree) Get(key string) ([]byte, error) {
 	value := l.memtable.Get(key)
 	if value != nil {
 		l.mu.RUnlock()
-		return value, nil
+		return handleValue(value)
 	}
 	l.mu.RUnlock()
 
@@ -159,7 +159,7 @@ func (l *LSMTree) Get(key string) ([]byte, error) {
 		value = l.flushingQueue[i].Get(key)
 		if value != nil {
 			l.flushingQueueMu.RUnlock()
-			return value, nil
+			return handleValue(value)
 		}
 	}
 	l.flushingQueueMu.RUnlock()
@@ -174,7 +174,7 @@ func (l *LSMTree) Get(key string) ([]byte, error) {
 		}
 		if value != nil {
 			l.sstablesMu.RUnlock()
-			return value, nil
+			return handleValue(value)
 		}
 	}
 	l.sstablesMu.RUnlock()

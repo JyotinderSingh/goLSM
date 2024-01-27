@@ -64,7 +64,7 @@ func (m *Memtable) Delete(key string) {
 }
 
 // Retrieve a value from the Memtable.
-func (m *Memtable) Get(key string) []byte {
+func (m *Memtable) Get(key string) *MemtableEntry {
 	m.mu.RLock()
 	value := m.data.Get(key)
 	m.mu.RUnlock()
@@ -73,19 +73,18 @@ func (m *Memtable) Get(key string) []byte {
 		return nil
 	}
 
-	if value.Value.(*MemtableEntry).Command == Command_DELETE {
-		return nil
-	}
-
-	return value.Value.(*MemtableEntry).Value
+	// We need to include the tombstones in the range scan. The caller will
+	// need to check the Command field of the MemtableEntry to determine if
+	// the entry is a tombstone.
+	return value.Value.(*MemtableEntry)
 }
 
 // Range scan the Memtable, inclusive of startKey and endKey.
-func (m *Memtable) RangeScan(startKey string, endKey string) [][]byte {
+func (m *Memtable) RangeScan(startKey string, endKey string) []*MemtableEntry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var results [][]byte
+	var results []*MemtableEntry
 	// Find the first key that is >= startKey and use the FindNext() method to
 	// iterate through the rest of the keys.
 	iter := m.data.Find(startKey)
@@ -94,12 +93,10 @@ func (m *Memtable) RangeScan(startKey string, endKey string) [][]byte {
 			break
 		}
 
-		if iter.Value.(*MemtableEntry).Command == Command_DELETE {
-			iter = iter.Next()
-			continue
-		}
-
-		results = append(results, iter.Value.(*MemtableEntry).Value)
+		// We need to include the tombstones in the range scan. The caller will
+		// need to check the Command field of the MemtableEntry to determine if
+		// the entry is a tombstone.
+		results = append(results, iter.Value.(*MemtableEntry))
 		iter = iter.Next()
 	}
 
