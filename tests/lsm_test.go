@@ -32,7 +32,7 @@ func TestLSMTreePut(t *testing.T) {
 func TestLSMTreePutMany(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreePutMany"
-	l, err := golsm.OpenLSMTree(dir, 100)
+	l, err := golsm.OpenLSMTree(dir, 32000)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 
@@ -51,8 +51,15 @@ func TestLSMTreePutMany(t *testing.T) {
 	}
 }
 
-// Checks SSTable loading on startup. Writes entries to the LSMTree, closes it,
-// and then opens it again. Checks that the entries are still there.
+// Checks SSTable loading on startup.
+// 1. Write 1000 key-value pairs to the LSMTree.
+// 2. Close the LSMTree.
+// 3. Open the LSMTree again.
+// 4. Check that the key-value pairs exist.
+// 5. Write another 1000 key-value pairs to the LSMTree.
+// 6. Close the LSMTree.
+// 7. Open the LSMTree again.
+// 8. Check that all 2000 key-value pairs exist.
 func TestLSMTreeSSTableLoading(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeSSTableLoading"
@@ -101,7 +108,7 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 func TestLSMTreeStressTest(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeStressTest"
-	l, err := golsm.OpenLSMTree(dir, 1000)
+	l, err := golsm.OpenLSMTree(dir, 32000)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 
@@ -112,7 +119,7 @@ func TestLSMTreeStressTest(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 1000)
+	l, err = golsm.OpenLSMTree(dir, 32000)
 	assert.Nil(t, err)
 
 	for i := 0; i < 100000; i++ {
@@ -127,7 +134,7 @@ func TestLSMTreeStressTest(t *testing.T) {
 func TestLSMTreeConcurrentWrites(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeConcurrentWrites"
-	l, err := golsm.OpenLSMTree(dir, 1000)
+	l, err := golsm.OpenLSMTree(dir, 32000)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 
@@ -147,7 +154,7 @@ func TestLSMTreeConcurrentWrites(t *testing.T) {
 	wg.Wait()
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 1000)
+	l, err = golsm.OpenLSMTree(dir, 32000)
 	assert.Nil(t, err)
 
 	// Read all the values back.
