@@ -129,7 +129,7 @@ func (m *Memtable) Len() int {
 }
 
 // Generates serializable list of memtable entries in sorted order for SSTable.
-func (m *Memtable) GetSerializableEntries() []*MemtableEntry {
+func (m *Memtable) GetEntries() []*MemtableEntry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

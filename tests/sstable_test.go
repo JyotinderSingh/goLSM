@@ -31,7 +31,7 @@ func TestSSTable(t *testing.T) {
 		assert.Equal(t, []byte(nil), memtable.Get("key4").Value)
 
 		// Write the memtable to an SSTable.
-		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		sstable, err := golsm.SerializeToSSTable(memtable.GetEntries(), testFileName)
 		assert.Nil(t, err)
 		defer sstable.Close()
 
@@ -84,7 +84,7 @@ func TestRangeScan(t *testing.T) {
 		populateMemtableWithTestData(memtable)
 
 		// Write the memtable to an SSTable.
-		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		sstable, err := golsm.SerializeToSSTable(memtable.GetEntries(), testFileName)
 		assert.Nil(t, err)
 		defer sstable.Close()
 
@@ -136,7 +136,7 @@ func TestRangeScanNonExistentRange(t *testing.T) {
 		populateMemtableWithTestData(memtable)
 
 		// Write the memtable to an SSTable.
-		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		sstable, err := golsm.SerializeToSSTable(memtable.GetEntries(), testFileName)
 		assert.Nil(t, err)
 		defer sstable.Close()
 
@@ -173,7 +173,7 @@ func TestRangeScanNonExactRange1(t *testing.T) {
 		populateMemtableWithTestData(memtable)
 
 		// Write the memtable to an SSTable.
-		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		sstable, err := golsm.SerializeToSSTable(memtable.GetEntries(), testFileName)
 		assert.Nil(t, err)
 		defer sstable.Close()
 
@@ -226,7 +226,7 @@ func TestRangeScanNonExactRange2(t *testing.T) {
 		populateMemtableWithTestData(memtable)
 
 		// Write the memtable to an SSTable.
-		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		sstable, err := golsm.SerializeToSSTable(memtable.GetEntries(), testFileName)
 		assert.Nil(t, err)
 		defer sstable.Close()
 
@@ -250,13 +250,13 @@ func TestRangeScanNonExactRange2(t *testing.T) {
 }
 
 // Test ReadAll on an SSTable.
-func TestReadAll(t *testing.T) {
+func TestGetEntries(t *testing.T) {
 	t.Parallel()
 
 	var reopenFile bool = true
 
 	for i := 0; i < 2; i++ {
-		testFileName := "TestReadAll.sst"
+		testFileName := "TestGetEntries.sst"
 
 		// Create a new LSM memtable.
 		memtable := golsm.NewMemtable()
@@ -264,7 +264,7 @@ func TestReadAll(t *testing.T) {
 		populateMemtableWithTestData(memtable)
 
 		// Write the memtable to an SSTable.
-		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		sstable, err := golsm.SerializeToSSTable(memtable.GetEntries(), testFileName)
 		assert.Nil(t, err)
 		defer sstable.Close()
 
@@ -278,7 +278,7 @@ func TestReadAll(t *testing.T) {
 		}
 
 		// Read all entries from the SSTable.
-		entries, err := sstable.ReadAll()
+		entries, err := sstable.GetEntries()
 		assert.Nil(t, err)
 		assert.Equal(t, 5, len(entries))
 
@@ -316,7 +316,7 @@ func TestSSTableIterator(t *testing.T) {
 		populateMemtableWithTestData(memtable)
 
 		// Write the memtable to an SSTable.
-		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		sstable, err := golsm.SerializeToSSTable(memtable.GetEntries(), testFileName)
 		assert.Nil(t, err)
 		defer sstable.Close()
 

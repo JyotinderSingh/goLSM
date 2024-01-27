@@ -148,8 +148,8 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 	return results, nil
 }
 
-// ReadAll returns all the values in the SSTable.
-func (s *SSTable) ReadAll() ([]*MemtableEntry, error) {
+// GetEntries returns all the values in the SSTable.
+func (s *SSTable) GetEntries() ([]*MemtableEntry, error) {
 	if _, err := s.file.Seek(int64(s.dataOffset), io.SeekStart); err != nil {
 		return nil, err
 	}

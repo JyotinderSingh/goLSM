@@ -191,12 +191,12 @@ func TestMemtableGetSerializableEntries(t *testing.T) {
 	memtable := golsm.NewMemtable()
 
 	// Test GetSerializableEntries() with no entries.
-	entries := memtable.GetSerializableEntries()
+	entries := memtable.GetEntries()
 	assert.Equal(t, 0, len(entries), "memtable.GetSerializableEntries() should return 0 with no entries")
 
 	// Test GetSerializableEntries() with one entry.
 	memtable.Put("foo0", []byte("bar"))
-	entries = memtable.GetSerializableEntries()
+	entries = memtable.GetEntries()
 	assert.Equal(t, 1, len(entries), "memtable.GetSerializableEntries() should return 1 with one entry")
 	assert.Equal(t, "foo0", entries[0].Key, "memtable.GetSerializableEntries() should return [\"foo\"] with one entry")
 	assert.Equal(t, "bar", string(entries[0].Value), "memtable.GetSerializableEntries() should return [\"bar\"] with one entry")
@@ -213,7 +213,7 @@ func TestMemtableGetSerializableEntries(t *testing.T) {
 	memtable.Put("foo2", []byte("bar2"))
 	memtable.Put("foo4", []byte("bar4"))
 	memtable.Put("foo5", []byte("bar5"))
-	entries = memtable.GetSerializableEntries()
+	entries = memtable.GetEntries()
 	assert.Equal(t, 10, len(entries), "memtable.GetSerializableEntries() should return 10 with multiple entries")
 	for i := 0; i < 10; i++ {
 		assert.Equal(t, fmt.Sprintf("foo%d", i), entries[i].Key, "memtable.GetSerializableEntries() should return [\"foo0\", \"foo1\", ..., \"foo9\"] with multiple entries")
@@ -228,7 +228,7 @@ func TestMemtableGetSerializableEntries(t *testing.T) {
 	// Delete entry not present in memtable.
 	memtable.Delete("z")
 
-	entries = memtable.GetSerializableEntries()
+	entries = memtable.GetEntries()
 	assert.Equal(t, 11, len(entries), "memtable.GetSerializableEntries() should return 10 with a deleted entry")
 	for i := 0; i < 10; i++ {
 		assert.Equal(t, fmt.Sprintf("foo%d", i), entries[i].Key, "memtable.GetSerializableEntries() should return [\"foo0\", \"foo1\", ..., \"foo9\"] with a deleted entry")

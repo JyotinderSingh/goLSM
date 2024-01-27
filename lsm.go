@@ -127,7 +127,7 @@ func (l *LSMTree) flushMemtable(memtable *Memtable) {
 	l.current_sst_sequence++
 	sstableFileName := l.getSSTableFilename()
 
-	sst, err := SerializeToSSTable(memtable.GetSerializableEntries(),
+	sst, err := SerializeToSSTable(memtable.GetEntries(),
 		sstableFileName)
 	if err != nil {
 		panic(err)
