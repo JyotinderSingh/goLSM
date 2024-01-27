@@ -14,6 +14,12 @@ type SSTable struct {
 	dataOffset EntrySize // Offset from where the actual entries begin
 }
 
+type SSTableIterator struct {
+	s     *SSTable
+	file  *os.File
+	Value *MemtableEntry
+}
+
 // Writes a list of MemtableKeyValue to a file in SSTable format.
 // Format of the file is:
 // 1. Size of the index (OffsetSize)
@@ -140,4 +146,96 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 	}
 
 	return results, nil
+}
+
+// ReadAll returns all the values in the SSTable.
+func (s *SSTable) ReadAll() ([]*MemtableEntry, error) {
+	if _, err := s.file.Seek(int64(s.dataOffset), io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	var results []*MemtableEntry
+	for {
+		size, err := readDataSize(s.file)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+
+		data, err := readEntryDataFromFile(s.file, size)
+		if err != nil {
+			return nil, err
+		}
+
+		entry := &MemtableEntry{}
+		mustUnmarshal(data, entry)
+
+		// We need to include the tombstones in the range scan. The caller will
+		// need to check the Command field of the MemtableEntry to determine if
+		// the entry is a tombstone.
+		results = append(results, entry)
+	}
+
+	return results, nil
+}
+
+// Returns an iterator for the SSTable. The iterator is positioned at the
+// beginning of the SSTable.
+func (s *SSTable) Front() *SSTableIterator {
+	// Open a new file handle for the iterator.
+	file, err := os.Open(s.file.Name())
+	if err != nil {
+		return nil
+	}
+	i := &SSTableIterator{s: s, file: file, Value: &MemtableEntry{}}
+
+	if _, err := i.file.Seek(int64(i.s.dataOffset), io.SeekStart); err != nil {
+		panic(err)
+	}
+
+	size, err := readDataSize(i.file)
+	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		panic(err)
+	}
+
+	data, err := readEntryDataFromFile(i.file, size)
+	if err != nil {
+		panic(err)
+	}
+
+	mustUnmarshal(data, i.Value)
+
+	return i
+}
+
+// Returns the next entry in the SSTable. Returns nil if there are no more
+// entries.
+func (i *SSTableIterator) Next() *SSTableIterator {
+	size, err := readDataSize(i.file)
+	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		panic(err)
+	}
+
+	data, err := readEntryDataFromFile(i.file, size)
+	if err != nil {
+		panic(err)
+	}
+
+	i.Value = &MemtableEntry{}
+	mustUnmarshal(data, i.Value)
+
+	return i
+}
+
+// Closes the iterator.
+func (i *SSTableIterator) Close() error {
+	return i.file.Close()
 }

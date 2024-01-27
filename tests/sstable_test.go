@@ -249,6 +249,118 @@ func TestRangeScanNonExactRange2(t *testing.T) {
 	}
 }
 
+// Test ReadAll on an SSTable.
+func TestReadAll(t *testing.T) {
+	t.Parallel()
+
+	var reopenFile bool = true
+
+	for i := 0; i < 2; i++ {
+		testFileName := "TestReadAll.sst"
+
+		// Create a new LSM memtable.
+		memtable := golsm.NewMemtable()
+
+		populateMemtableWithTestData(memtable)
+
+		// Write the memtable to an SSTable.
+		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		assert.Nil(t, err)
+		defer sstable.Close()
+
+		if reopenFile {
+			if err := sstable.Close(); err != nil {
+				t.Fatal(err)
+			}
+			// Open the SSTable for reading.
+			sstable, err = golsm.OpenSSTable(testFileName)
+			assert.Nil(t, err)
+		}
+
+		// Read all entries from the SSTable.
+		entries, err := sstable.ReadAll()
+		assert.Nil(t, err)
+		assert.Equal(t, 5, len(entries))
+
+		assert.Equal(t, []byte("value1"), entries[0].Value)
+		assert.NotNil(t, entries[0].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, golsm.Command_DELETE, entries[1].Command)
+		assert.NotNil(t, entries[1].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, []byte("value3"), entries[2].Value)
+		assert.NotNil(t, entries[2].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, golsm.Command_DELETE, entries[3].Command)
+		assert.NotNil(t, entries[3].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, []byte("value5"), entries[4].Value)
+		assert.NotNil(t, entries[4].Timestamp, "Timestamp should not be nil")
+
+		reopenFile = !reopenFile
+		os.Remove(testFileName)
+	}
+}
+
+func TestSSTableIterator(t *testing.T) {
+	t.Parallel()
+
+	var reopenFile bool = true
+
+	for i := 0; i < 2; i++ {
+		testFileName := "TestSSTableIterator.sst"
+
+		// Create a new LSM memtable.
+		memtable := golsm.NewMemtable()
+
+		populateMemtableWithTestData(memtable)
+
+		// Write the memtable to an SSTable.
+		sstable, err := golsm.SerializeToSSTable(memtable.GetSerializableEntries(), testFileName)
+		assert.Nil(t, err)
+		defer sstable.Close()
+
+		if reopenFile {
+			if err := sstable.Close(); err != nil {
+				t.Fatal(err)
+			}
+			// Open the SSTable for reading.
+			sstable, err = golsm.OpenSSTable(testFileName)
+			assert.Nil(t, err)
+		}
+
+		// Iterate over the SSTable.
+		iter := sstable.Front()
+		defer iter.Close()
+
+		// Read all entries from the SSTable.
+		entries := make([]*golsm.MemtableEntry, 0)
+		for iter != nil {
+			entries = append(entries, iter.Value)
+			iter = iter.Next()
+		}
+		assert.Equal(t, 5, len(entries))
+
+		assert.Equal(t, "value1", string(entries[0].Value))
+		assert.NotNil(t, entries[0].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, golsm.Command_DELETE, entries[1].Command)
+		assert.NotNil(t, entries[1].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, "value3", string(entries[2].Value))
+		assert.NotNil(t, entries[2].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, golsm.Command_DELETE, entries[3].Command)
+		assert.NotNil(t, entries[3].Timestamp, "Timestamp should not be nil")
+
+		assert.Equal(t, "value5", string(entries[4].Value))
+		assert.NotNil(t, entries[4].Timestamp, "Timestamp should not be nil")
+
+		reopenFile = !reopenFile
+		os.Remove(testFileName)
+	}
+}
+
 func populateMemtableWithTestData(memtable *golsm.Memtable) {
 	memtable.Put("key1", []byte("value1"))
 	memtable.Put("key2", []byte("value2"))
