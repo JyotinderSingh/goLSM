@@ -12,6 +12,7 @@ enum Command {
 message MemtableEntry {
   Command command = 1;
   optional bytes value = 2;
+  int64 timestamp = 3;
 }
 
 message BloomFilter {

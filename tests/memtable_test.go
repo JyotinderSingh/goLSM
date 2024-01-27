@@ -19,6 +19,7 @@ func TestMemtablePutGetDelete(t *testing.T) {
 	// Test Put() and Get().
 	memtable.Put("foo", []byte("bar"))
 	assert.Equal(t, []byte("bar"), memtable.Get("foo").Value, "memtable.Get(\"foo\") should return \"bar\"")
+	assert.NotNil(t, memtable.Get("foo").Timestamp, "memtable.Get(\"foo\") should have a non-nil timestamp")
 
 	// Test Delete().
 	memtable.Delete("foo")

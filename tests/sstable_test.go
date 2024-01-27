@@ -39,10 +39,12 @@ func TestSSTable(t *testing.T) {
 		entry, err := sstable.Get("key1")
 		assert.Nil(t, err)
 		assert.Equal(t, []byte("value1"), entry.Value)
+		assert.NotNil(t, entry.Timestamp, "Timestamp should not be nil")
 
 		entry, err = sstable.Get("key3")
 		assert.Nil(t, err)
 		assert.Equal(t, []byte("value3"), entry.Value)
+		assert.NotNil(t, entry.Timestamp, "Timestamp should not be nil")
 
 		if reopenFile {
 			if err := sstable.Close(); err != nil {
@@ -99,11 +101,22 @@ func TestRangeScan(t *testing.T) {
 		entries, err := sstable.RangeScan("key1", "key5")
 		assert.Nil(t, err)
 		assert.Equal(t, 5, len(entries))
+
 		assert.Equal(t, []byte("value1"), entries[0].Value)
+		assert.NotNil(t, entries[0].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, golsm.Command_DELETE, entries[1].Command)
+		assert.NotNil(t, entries[1].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, []byte("value3"), entries[2].Value)
+		assert.NotNil(t, entries[2].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, golsm.Command_DELETE, entries[3].Command)
+		assert.NotNil(t, entries[3].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, []byte("value5"), entries[4].Value)
+		assert.NotNil(t, entries[4].Timestamp, "Timestamp should not be nil")
+
 		os.Remove(testFileName)
 		reopenFile = !reopenFile
 	}
@@ -177,11 +190,21 @@ func TestRangeScanNonExactRange1(t *testing.T) {
 		entries, err := sstable.RangeScan("a", "z")
 		assert.Nil(t, err)
 		assert.Equal(t, 5, len(entries))
+
 		assert.Equal(t, []byte("value1"), entries[0].Value)
+		assert.NotNil(t, entries[0].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, golsm.Command_DELETE, entries[1].Command)
+		assert.NotNil(t, entries[1].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, []byte("value3"), entries[2].Value)
+		assert.NotNil(t, entries[2].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, golsm.Command_DELETE, entries[3].Command)
+		assert.NotNil(t, entries[3].Timestamp, "Timestamp should not be nil")
+
 		assert.Equal(t, []byte("value5"), entries[4].Value)
+		assert.NotNil(t, entries[4].Timestamp, "Timestamp should not be nil")
 
 		reopenFile = !reopenFile
 		os.Remove(testFileName)
