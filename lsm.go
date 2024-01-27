@@ -185,19 +185,31 @@ func (l *LSMTree) Get(key string) ([]byte, error) {
 // Loads all the SSTables from disk into memory. Also sorts the SSTables by
 // sequence number. This function should be called on startup.
 func (l *LSMTree) loadSSTables() error {
-	// Create directory if it doesn't exist.
 	if err := os.MkdirAll(l.directory, 0755); err != nil {
 		return err
 	}
 
-	// Load SSTables from disk.
-	// Read all the files in the directory.
+	if err := l.loadSSTablesFromDisk(); err != nil {
+		return err
+	}
+
+	l.sortSSTablesBySequenceNumber()
+
+	if err := l.setCurrentSSTSequence(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Load SSTables from disk. Loads all files in the directory that have the
+// SSTable prefix.
+func (l *LSMTree) loadSSTablesFromDisk() error {
 	files, err := os.ReadDir(l.directory)
 	if err != nil {
 		return err
 	}
 
-	// Open all the SSTables and load their handles into memory.
 	for _, file := range files {
 		if file.IsDir() || !isSSTableFile(file.Name()) {
 			continue
@@ -210,33 +222,36 @@ func (l *LSMTree) loadSSTables() error {
 		l.sstables = append(l.sstables, sstable)
 	}
 
-	// Sort the SSTables by sequence number.
+	return nil
+}
+
+// Sort the SSTables by sequence number.
+// Example: sstable_1, sstable_2, sstable_3, sstable_4
+func (l *LSMTree) sortSSTablesBySequenceNumber() {
 	sort.Slice(l.sstables, func(i, j int) bool {
-		// Extract the sequence number from the filename.
-		iSequence, err := strconv.ParseUint(l.sstables[i].file.Name()[len(l.directory)+1+len(SSTableFilePrefix):], 10, 64)
-		if err != nil {
-			panic(err)
-		}
-
-		jSequence, err := strconv.ParseUint(l.sstables[j].file.Name()[len(l.directory)+1+len(SSTableFilePrefix):], 10, 64)
-		if err != nil {
-			panic(err)
-		}
-
+		iSequence := l.getSequenceNumber(l.sstables[i].file.Name())
+		jSequence := l.getSequenceNumber(l.sstables[j].file.Name())
 		return iSequence < jSequence
 	})
+}
 
-	// Get the index of the last SSTable by getting the name of the last file and
-	// removing the prefix (directory + prefix + sequence number).
+// Get the sequence number from the SSTable filename.
+// Example: sstable_123 -> 123
+func (l *LSMTree) getSequenceNumber(filename string) uint64 {
+	sequenceStr := filename[len(l.directory)+1+len(SSTableFilePrefix):]
+	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return sequence
+}
+
+// Set the current SST sequence number.
+func (l *LSMTree) setCurrentSSTSequence() error {
 	if len(l.sstables) > 0 {
-		sstSequence := l.sstables[len(l.sstables)-1].file.Name()[len(l.directory)+1+len(SSTableFilePrefix):]
-		sequence, err := strconv.ParseUint(sstSequence, 10, 64)
-		if err != nil {
-			return err
-		}
-
+		lastSSTable := l.sstables[len(l.sstables)-1]
+		sequence := l.getSequenceNumber(lastSSTable.file.Name())
 		l.current_sst_sequence = sequence
 	}
-
 	return nil
 }
