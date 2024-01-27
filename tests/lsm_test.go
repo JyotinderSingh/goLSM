@@ -218,3 +218,47 @@ func TestLSMTreeConcurrentWrites(t *testing.T) {
 		}
 	}
 }
+
+// Test updates to the same key. Writes 1000 key-value pairs to the LSMTree,
+// then updates them all with new values.
+func TestLSMTreeUpdate(t *testing.T) {
+	t.Parallel()
+	dir := "TestLSMTreeUpdate"
+	l, err := golsm.OpenLSMTree(dir, 200)
+	assert.Nil(t, err)
+	defer os.RemoveAll(dir)
+
+	// Write 1000 key-value pairs to the LSMTree.
+	for i := 0; i < 1000; i++ {
+		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
+		assert.Nil(t, err)
+	}
+
+	// Update all the key-value pairs.
+	for i := 0; i < 1000; i++ {
+		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d%d", i, i)))
+		assert.Nil(t, err)
+	}
+
+	// Check that the key-value pairs exist.
+	for i := 0; i < 1000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d%d", i, i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d%d", i, i), string(value))
+	}
+
+	// Close and reopen the LSMTree to ensure that the key-value pairs are
+	// persisted correctly.
+	l.Close()
+	l, err = golsm.OpenLSMTree(dir, 32000)
+	assert.Nil(t, err)
+
+	// Check that the key-value pairs still exist.
+	for i := 0; i < 1000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d%d", i, i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d%d", i, i), string(value))
+	}
+
+	l.Close()
+}
