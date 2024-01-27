@@ -38,7 +38,7 @@ func (m *Memtable) Put(key string, value []byte) {
 	}
 
 	// Update with the new entry.
-	entry := getMemtableEntry(&value, Command_PUT)
+	entry := getMemtableEntry(key, &value, Command_PUT)
 	m.data.Set(key, entry)
 	m.size += sizeChange
 }
@@ -60,7 +60,7 @@ func (m *Memtable) Delete(key string) {
 		m.size += int64(len(key))
 	}
 
-	m.data.Set(key, getMemtableEntry(nil, Command_DELETE))
+	m.data.Set(key, getMemtableEntry(key, nil, Command_DELETE))
 }
 
 // Retrieve a value from the Memtable.
@@ -129,17 +129,14 @@ func (m *Memtable) Len() int {
 }
 
 // Generates serializable list of memtable entries in sorted order for SSTable.
-func (m *Memtable) GetSerializableEntries() []*MemtableKeyValue {
+func (m *Memtable) GetSerializableEntries() []*MemtableEntry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var results []*MemtableKeyValue
+	var results []*MemtableEntry
 	iter := m.data.Front()
 	for iter != nil {
-		results = append(results, &MemtableKeyValue{
-			Key:   iter.Element().Key().(string),
-			Value: iter.Value.(*MemtableEntry),
-		})
+		results = append(results, iter.Value.(*MemtableEntry))
 		iter = iter.Next()
 	}
 

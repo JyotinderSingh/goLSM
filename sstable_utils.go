@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func buildIndexAndEntriesBuffer(messages []*MemtableKeyValue) (*Index, *bytes.Buffer, error) {
+func buildIndexAndEntriesBuffer(messages []*MemtableEntry) (*Index, *bytes.Buffer, error) {
 	var index []*IndexEntry
 	var currentOffset EntrySize = 0
 	entriesBuffer := &bytes.Buffer{}

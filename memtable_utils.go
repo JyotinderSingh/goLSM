@@ -2,8 +2,9 @@ package golsm
 
 import "time"
 
-func getMemtableEntry(value *[]byte, command Command) *MemtableEntry {
+func getMemtableEntry(key string, value *[]byte, command Command) *MemtableEntry {
 	entry := &MemtableEntry{
+		Key:       key,
 		Command:   command,
 		Timestamp: time.Now().Unix(),
 	}

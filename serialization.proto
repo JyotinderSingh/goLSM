@@ -10,9 +10,10 @@ enum Command {
 }
 
 message MemtableEntry {
-  Command command = 1;
-  optional bytes value = 2;
-  int64 timestamp = 3;
+  string key = 1;
+  Command command = 2;
+  optional bytes value = 3;
+  int64 timestamp = 4;
 }
 
 message BloomFilter {
@@ -26,9 +27,4 @@ message IndexEntry {
 
 message Index {
   repeated IndexEntry entries = 1;   
-}
-
-message MemtableKeyValue {
-  string key = 1;
-  MemtableEntry value = 2;
 }

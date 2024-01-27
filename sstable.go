@@ -26,7 +26,7 @@ type SSTable struct {
 //
 // The index is a list of IndexEntry, which is a struct containing the key and
 // the offset of the entry in the file (after the index).
-func SerializeToSSTable(messages []*MemtableKeyValue, filename string) (*SSTable, error) {
+func SerializeToSSTable(messages []*MemtableEntry, filename string) (*SSTable, error) {
 	index, entriesBuffer, err := buildIndexAndEntriesBuffer(messages)
 	if err != nil {
 		return nil, err
@@ -90,13 +90,13 @@ func (s *SSTable) Get(key string) (*MemtableEntry, error) {
 		return nil, err
 	}
 
-	entry := &MemtableKeyValue{}
+	entry := &MemtableEntry{}
 	mustUnmarshal(data, entry)
 
 	// We need to include the tombstones in the range scan. The caller will
 	// need to check the Command field of the MemtableEntry to determine if
 	// the entry is a tombstone.
-	return entry.Value, nil
+	return entry, nil
 }
 
 // RangeScan returns all the values in the SSTable between startKey and endKey
@@ -126,7 +126,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 			return nil, err
 		}
 
-		entry := &MemtableKeyValue{}
+		entry := &MemtableEntry{}
 		mustUnmarshal(data, entry)
 
 		if entry.Key > endKey {
@@ -136,7 +136,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 		// We need to include the tombstones in the range scan. The caller will
 		// need to check the Command field of the MemtableEntry to determine if
 		// the entry is a tombstone.
-		results = append(results, entry.GetValue())
+		results = append(results, entry)
 	}
 
 	return results, nil
