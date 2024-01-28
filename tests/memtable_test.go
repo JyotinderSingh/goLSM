@@ -94,6 +94,37 @@ func TestMemtableScan(t *testing.T) {
 
 }
 
+// Test RangeScan with updated entries, run a range scan on updated entries and
+// check if the returned entries are correct.
+func TestMemtableScanUpdatedEntries(t *testing.T) {
+	t.Parallel()
+
+	memtable := golsm.NewMemtable()
+
+	// Populate the memtable with a large number of entries
+	for i := 0; i < 26; i++ {
+		key := fmt.Sprintf("%c", 'a'+i)
+		value := []byte(fmt.Sprintf("%c", 'a'+i))
+		memtable.Put(key, value)
+	}
+
+	// Update some entries
+	for i := 0; i < 26; i++ {
+		key := fmt.Sprintf("%c", 'a'+i)
+		value := []byte(fmt.Sprintf("%c%c", 'a'+i, 'a'+i))
+		memtable.Put(key, value)
+	}
+
+	// Scan the memtable
+	results := memtable.RangeScan("a", "z")
+
+	// Validate the results
+	assert.Equal(t, 26, len(results), "Scan results were affected by concurrent operations.")
+	for i := 0; i < 26; i++ {
+		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(results[i].Value), "Scan results were affected by concurrent operations.")
+	}
+}
+
 func TestMemtableScanConsistency(t *testing.T) {
 	t.Parallel()
 

@@ -188,6 +188,40 @@ func (l *LSMTree) Get(key string) ([]byte, error) {
 	return nil, nil
 }
 
+// RangeScan returns all the entries in the LSMTree that have keys in the range
+// [startKey, endKey]. The entries are returned in sorted order of keys.
+func (l *LSMTree) RangeScan(startKey string, endKey string) ([][]byte, error) {
+	ranges := [][]*MemtableEntry{}
+	// We take all locks together to ensure a consistent view of the LSMTree for
+	// the range scan.
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	l.sstablesMu.RLock()
+	defer l.sstablesMu.RUnlock()
+	l.flushingQueueMu.RLock()
+	defer l.flushingQueueMu.RUnlock()
+
+	entries := l.memtable.RangeScan(startKey, endKey)
+	ranges = append(ranges, entries)
+
+	// Check flushing queue memtables in reverse order.
+	for i := len(l.flushingQueue) - 1; i >= 0; i-- {
+		entries := l.flushingQueue[i].RangeScan(startKey, endKey)
+		ranges = append(ranges, entries)
+	}
+
+	// Check SSTables in reverse order.
+	for i := len(l.sstables) - 1; i >= 0; i-- {
+		entries, err := l.sstables[i].RangeScan(startKey, endKey)
+		if err != nil {
+			return nil, err
+		}
+		ranges = append(ranges, entries)
+	}
+
+	return mergeRanges(ranges), nil
+}
+
 // Loads all the SSTables from disk into memory. Also sorts the SSTables by
 // sequence number. This function should be called on startup.
 func (l *LSMTree) loadSSTables() error {

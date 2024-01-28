@@ -262,3 +262,95 @@ func TestLSMTreeUpdate(t *testing.T) {
 
 	l.Close()
 }
+
+// Test RangeScan on the LSMTree. Writes key-value pairs to the LSMTree and then
+// performs a RangeScan to check that they are all returned.
+// Then updates some key-value pairs and performs another RangeScan to check that
+// the updated values are returned.
+// Then deletes some other key-value pairs and performs another RangeScan to check that
+// they are no longer returned.
+func TestLSMTreeRangeScan(t *testing.T) {
+	t.Parallel()
+	dir := "TestLSMTreeRangeScan"
+	l, err := golsm.OpenLSMTree(dir, 16)
+	assert.Nil(t, err)
+	defer os.RemoveAll(dir)
+
+	// Write alphabet key-value pairs to the LSMTree.
+	for i := 0; i < 26; i++ {
+		err := l.Put(fmt.Sprintf("%c", 'a'+i), []byte(fmt.Sprintf("%c", 'a'+i)))
+		assert.Nil(t, err)
+	}
+
+	// Check that the key-value pairs exist.
+	for i := 0; i < 26; i++ {
+		value, err := l.Get(fmt.Sprintf("%c", 'a'+i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%c", 'a'+i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c", 'a'+i), string(value))
+	}
+
+	// Perform a RangeScan to check that all the key-value pairs are returned.
+	values, err := l.RangeScan("a", "z")
+	assert.Nil(t, err)
+	assert.Equal(t, 26, len(values), "Expected 26 values, got %v", len(values))
+
+	// Update some key-value pairs.
+	for i := 0; i < 26; i++ {
+		err := l.Put(fmt.Sprintf("%c", 'a'+i), []byte(fmt.Sprintf("%c%c", 'a'+i, 'a'+i)))
+		assert.Nil(t, err)
+	}
+
+	// Perform a RangeScan to check that all the updated key-value pairs are returned.
+	values, err = l.RangeScan("a", "z")
+	assert.Nil(t, err)
+	assert.Equal(t, 26, len(values), "Expected 26 values, got %v", len(values))
+
+	// Validate the entries
+	for i := 0; i < 26; i++ {
+		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]))
+	}
+
+	// Perform a RangeScan on a subset of the key-value pairs.
+	values, err = l.RangeScan("a", "m")
+	assert.Nil(t, err)
+	assert.Equal(t, 13, len(values), "Expected 13 values, got %v", len(values))
+	for i := 0; i < 13; i++ {
+		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]))
+	}
+
+	l.Close()
+
+	// Check that the key-value pairs still exist after closing and reopening the LSMTree.
+	l, err = golsm.OpenLSMTree(dir, 16)
+	assert.Nil(t, err)
+
+	values, err = l.RangeScan("c", "x")
+	assert.Nil(t, err)
+	assert.Equal(t, 22, len(values), "Expected 22 values, got %v", len(values))
+	for i := 0; i < 22; i++ {
+		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i+2, 'a'+i+2), string(values[i]), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i+2, 'a'+i+2), string(values[i]))
+	}
+
+	// Delete some key-value pairs.
+	for i := 0; i < 26; i++ {
+		err := l.Delete(fmt.Sprintf("%c", 'a'+i))
+		assert.Nil(t, err)
+
+	}
+
+	// Perform a RangeScan to check that the deleted key-value pairs are not returned.
+	values, err = l.RangeScan("a", "z")
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(values), "Expected 0 values, got %v", len(values))
+
+	l.Close()
+
+	// Check that the key-value pairs still exist after closing and reopening the LSMTree.
+	l, err = golsm.OpenLSMTree(dir, 16)
+	assert.Nil(t, err)
+
+	// Perform a RangeScan to check that the deleted key-value pairs are not returned.
+	values, err = l.RangeScan("a", "z")
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(values), "Expected 0 values, got %v", len(values))
+}
