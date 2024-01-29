@@ -9,9 +9,10 @@ import (
 type EntrySize int64
 
 type SSTable struct {
-	index      *Index    // Index of the SSTable
-	file       *os.File  // File handle for the on-disk SSTable file.
-	dataOffset EntrySize // Offset from where the actual entries begin
+	bloomFilter *BloomFilter // Bloom filter for the SSTable
+	index       *Index       // Index of the SSTable
+	file        *os.File     // File handle for the on-disk SSTable file.
+	dataOffset  EntrySize    // Offset from where the actual entries begin
 }
 
 type SSTableIterator struct {
@@ -33,14 +34,15 @@ type SSTableIterator struct {
 // The index is a list of IndexEntry, which is a struct containing the key and
 // the offset of the entry in the file (after the index).
 func SerializeToSSTable(messages []*MemtableEntry, filename string) (*SSTable, error) {
-	index, entriesBuffer, err := buildIndexAndEntriesBuffer(messages)
+	bloomFilter, index, entriesBuffer, err := buildMetadataAndEntriesBuffer(messages)
 	if err != nil {
 		return nil, err
 	}
 
 	indexData := mustMarshal(index)
+	bloomFilterData := mustMarshal(bloomFilter)
 
-	dataOffset, err := writeSSTable(filename, indexData, entriesBuffer)
+	dataOffset, err := writeSSTable(filename, bloomFilterData, indexData, entriesBuffer)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ func SerializeToSSTable(messages []*MemtableEntry, filename string) (*SSTable, e
 		return nil, err
 	}
 
-	return &SSTable{index: index, file: file, dataOffset: dataOffset}, nil
+	return &SSTable{bloomFilter: bloomFilter, index: index, file: file, dataOffset: dataOffset}, nil
 }
 
 // Opens an SSTable file for reading and returns a handle to it.
@@ -60,12 +62,12 @@ func OpenSSTable(filename string) (*SSTable, error) {
 		return nil, err
 	}
 
-	index, dataOffset, err := readSSTableMetadata(file)
+	bloomFilter, index, dataOffset, err := readSSTableMetadata(file)
 	if err != nil {
 		return nil, err
 	}
 
-	return &SSTable{index: index, file: file, dataOffset: dataOffset}, nil
+	return &SSTable{bloomFilter: bloomFilter, index: index, file: file, dataOffset: dataOffset}, nil
 }
 
 func (s *SSTable) Close() error {
@@ -75,6 +77,12 @@ func (s *SSTable) Close() error {
 // Reads the value for a given key from the SSTable. Returns nil if the key is
 // not found.
 func (s *SSTable) Get(key string) (*MemtableEntry, error) {
+	// Check if the key is in the bloom filter. If it is not, we can return
+	// immediately.
+	if !s.bloomFilter.Test([]byte(key)) {
+		return nil, nil
+	}
+
 	offset, found := findOffsetForKey(s.index.Entries, key)
 	if !found {
 		return nil, nil

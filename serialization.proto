@@ -17,7 +17,8 @@ message MemtableEntry {
 }
 
 message BloomFilter {
-  repeated uint32 hashes = 1;
+ repeated bool bitset = 1;
+ int64 size = 2;
 }
 
 message IndexEntry {
