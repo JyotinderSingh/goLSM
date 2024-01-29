@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	golsm "github.com/JyotinderSingh/go-lsm"
 	"github.com/stretchr/testify/assert"
@@ -13,9 +14,10 @@ import (
 func TestLSMTreePut(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreePut"
-	l, err := golsm.OpenLSMTree(dir, 1000)
+	l, err := golsm.OpenLSMTree(dir, 1000, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	// Put a key-value pair into the LSMTree.
 	err = l.Put("key", []byte("value"))
@@ -39,7 +41,7 @@ func TestLSMTreePut(t *testing.T) {
 
 	// Check that the key-value pair still exists in the LSMTree after closing and
 	// reopening it.
-	l, err = golsm.OpenLSMTree(dir, 1000)
+	l, err = golsm.OpenLSMTree(dir, 1000, true)
 	assert.Nil(t, err)
 
 	value, err = l.Get("key")
@@ -53,9 +55,10 @@ func TestLSMTreePut(t *testing.T) {
 func TestLSMTreePutMany(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreePutMany"
-	l, err := golsm.OpenLSMTree(dir, 32000)
+	l, err := golsm.OpenLSMTree(dir, 32000, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	defer l.Close()
 
@@ -84,9 +87,10 @@ func TestLSMTreePutMany(t *testing.T) {
 func TestLSMTreeSSTableLoading(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeSSTableLoading"
-	l, err := golsm.OpenLSMTree(dir, 100)
+	l, err := golsm.OpenLSMTree(dir, 100, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	for i := 0; i < 1000; i++ {
 		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
@@ -102,7 +106,7 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 100)
+	l, err = golsm.OpenLSMTree(dir, 100, true)
 	assert.Nil(t, err)
 
 	for i := 0; i < 1000; i++ {
@@ -138,7 +142,7 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 100)
+	l, err = golsm.OpenLSMTree(dir, 100, true)
 	assert.Nil(t, err)
 
 	for i := 0; i < 2000; i++ {
@@ -160,9 +164,10 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 func TestLSMTreeStressTest(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeStressTest"
-	l, err := golsm.OpenLSMTree(dir, 32000)
+	l, err := golsm.OpenLSMTree(dir, 32000, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	for i := 0; i < 100000; i++ {
 		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
@@ -171,7 +176,7 @@ func TestLSMTreeStressTest(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 32000)
+	l, err = golsm.OpenLSMTree(dir, 32000, true)
 	assert.Nil(t, err)
 
 	for i := 0; i < 100000; i++ {
@@ -186,9 +191,10 @@ func TestLSMTreeStressTest(t *testing.T) {
 func TestLSMTreeConcurrentWrites(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeConcurrentWrites"
-	l, err := golsm.OpenLSMTree(dir, 32000)
+	l, err := golsm.OpenLSMTree(dir, 32000, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	var wg sync.WaitGroup
 	wg.Add(100)
@@ -206,7 +212,7 @@ func TestLSMTreeConcurrentWrites(t *testing.T) {
 	wg.Wait()
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 32000)
+	l, err = golsm.OpenLSMTree(dir, 32000, true)
 	assert.Nil(t, err)
 
 	// Read all the values back.
@@ -224,9 +230,10 @@ func TestLSMTreeConcurrentWrites(t *testing.T) {
 func TestLSMTreeUpdate(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeUpdate"
-	l, err := golsm.OpenLSMTree(dir, 200)
+	l, err := golsm.OpenLSMTree(dir, 200, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	// Write 1000 key-value pairs to the LSMTree.
 	for i := 0; i < 1000; i++ {
@@ -250,7 +257,7 @@ func TestLSMTreeUpdate(t *testing.T) {
 	// Close and reopen the LSMTree to ensure that the key-value pairs are
 	// persisted correctly.
 	l.Close()
-	l, err = golsm.OpenLSMTree(dir, 32000)
+	l, err = golsm.OpenLSMTree(dir, 32000, true)
 	assert.Nil(t, err)
 
 	// Check that the key-value pairs still exist.
@@ -272,9 +279,10 @@ func TestLSMTreeUpdate(t *testing.T) {
 func TestLSMTreeRangeScan(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeRangeScan"
-	l, err := golsm.OpenLSMTree(dir, 16)
+	l, err := golsm.OpenLSMTree(dir, 16, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	// Write alphabet key-value pairs to the LSMTree.
 	for i := 0; i < 26; i++ {
@@ -321,7 +329,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 	l.Close()
 
 	// Check that the key-value pairs still exist after closing and reopening the LSMTree.
-	l, err = golsm.OpenLSMTree(dir, 16)
+	l, err = golsm.OpenLSMTree(dir, 16, true)
 	assert.Nil(t, err)
 
 	values, err = l.RangeScan("c", "x")
@@ -346,11 +354,84 @@ func TestLSMTreeRangeScan(t *testing.T) {
 	l.Close()
 
 	// Check that the key-value pairs still exist after closing and reopening the LSMTree.
-	l, err = golsm.OpenLSMTree(dir, 16)
+	l, err = golsm.OpenLSMTree(dir, 16, true)
 	assert.Nil(t, err)
 
 	// Perform a RangeScan to check that the deleted key-value pairs are not returned.
 	values, err = l.RangeScan("a", "z")
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(values), "Expected 0 values, got %v", len(values))
+}
+
+// TestWALRecovery tests that the LSMTree can recover from a crash.
+func TestWALRecovery(t *testing.T) {
+	t.Parallel()
+	dir := "TestWALRecovery"
+	l, err := golsm.OpenLSMTree(dir, 64000, true)
+	assert.Nil(t, err)
+	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
+
+	// Write 1000 key-value pairs to the LSMTree.
+	for i := 0; i < 1000; i++ {
+		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
+		assert.Nil(t, err)
+	}
+
+	l.Close()
+
+	l, err = golsm.OpenLSMTree(dir, 64000, true)
+	assert.Nil(t, err)
+
+	// Check that the key-value pairs exist.
+	for i := 0; i < 1000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+	}
+
+	// Write another 1000 key-value pairs to the LSMTree.
+	for i := 1000; i < 2000; i++ {
+		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
+		assert.Nil(t, err)
+	}
+
+	// Give the WAL time to flush. Test becomes flaky if this is not done.
+	time.Sleep(200 * time.Millisecond)
+
+	// Suddenly crash the LSMTree. We simulate this by initializing the LSMTree
+	// with a new object.
+	l, err = golsm.OpenLSMTree(dir, 64000, true)
+	assert.Nil(t, err)
+
+	// Check that the key-value pairs still exist.
+	for i := 0; i < 2000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+	}
+
+	// Delete range 400-600.
+	for i := 400; i < 600; i++ {
+		err := l.Delete(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+	}
+
+	// Give the WAL time to flush. Test becomes flaky if this is not done.
+	time.Sleep(600 * time.Millisecond)
+
+	// Suddenly crash the LSMTree.
+	l, err = golsm.OpenLSMTree(dir, 64000, true)
+	assert.Nil(t, err)
+
+	// Check that the key-value pairs still exist and updates are applied.
+	for i := 0; i < 2000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		if i >= 400 && i < 600 {
+			assert.Nil(t, value, "Expected value to be nil, got '%v'", string(value))
+		} else {
+			assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+		}
+	}
 }

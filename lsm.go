@@ -2,15 +2,20 @@ package golsm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"strconv"
 	"sync"
+	"time"
+
+	gw "github.com/JyotinderSingh/go-wal"
 )
 
 const (
-	SSTableFilePrefix = "sstable_"
+	SSTableFilePrefix  = "sstable_"
+	WALDirectorySuffix = "_wal"
 )
 
 type LSMTree struct {
@@ -18,6 +23,8 @@ type LSMTree struct {
 	mu              sync.RWMutex // Lock 1: for memtable.
 	maxMemtableSize int64
 	directory       string
+	wal             *gw.WAL // WAL for LSMTree
+	inRecovery      bool
 	// --- Manage SSTables.
 	sstables             []*SSTable
 	sstablesMu           sync.RWMutex // Lock 2: for sstables.
@@ -36,14 +43,25 @@ type LSMTree struct {
 // directory: The directory where the SSTables will be stored.
 // maxMemtableSize: The maximum size of the memtable before it is flushed to an
 // SSTable.
+// runRecovery: If true, the LSMTree will recover from the WAL on startup.
 // On startup, the LSMTree will load all the SSTables handles (if any) from disk
 // into memory.
-func OpenLSMTree(directory string, maxMemtableSize int64) (*LSMTree, error) {
+func OpenLSMTree(directory string, maxMemtableSize int64, runRecovery bool) (*LSMTree, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// Setup the WAL for the LSMTree.
+	wal, err := gw.OpenWAL(directory+WALDirectorySuffix, true, 128000, 1000)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
 	lsm := &LSMTree{
 		memtable:             NewMemtable(),
 		maxMemtableSize:      maxMemtableSize,
 		directory:            directory,
+		wal:                  wal,
+		inRecovery:           false,
 		current_sst_sequence: 0,
 		sstables:             make([]*SSTable, 0),
 		flushingQueue:        make([]*Memtable, 0),
@@ -58,6 +76,15 @@ func OpenLSMTree(directory string, maxMemtableSize int64) (*LSMTree, error) {
 
 	lsm.wg.Add(1)
 	go lsm.flushMemtablesInQueue()
+
+	// Recover any entries that were written to the WAL but not flushed to
+	// SSTables.
+	if runRecovery {
+		if err := lsm.recoverFromWAL(); err != nil {
+			return nil, err
+		}
+	}
+
 	return lsm, nil
 }
 
@@ -65,6 +92,7 @@ func (l *LSMTree) Close() error {
 	l.addCurrentMemtableToFlushQueue()
 	l.cancel()
 	l.wg.Wait()
+	l.wal.Close()
 	close(l.flushingChan)
 	return nil
 }
@@ -72,6 +100,18 @@ func (l *LSMTree) Close() error {
 // Insert a key-value pair into the LSMTree.
 func (l *LSMTree) Put(key string, value []byte) error {
 	l.mu.Lock()
+
+	// Write to WAL before writing to memtable. We don't need to write to WAL
+	// while recovering from WAL.
+	if !l.inRecovery {
+		l.wal.WriteEntry(mustMarshal(&WALEntry{
+			Key:       key,
+			Command:   Command_PUT,
+			Value:     value,
+			Timestamp: time.Now().UnixNano(),
+		}))
+	}
+
 	l.memtable.Put(key, value)
 	l.mu.Unlock()
 	if l.memtable.size > l.maxMemtableSize {
@@ -84,6 +124,17 @@ func (l *LSMTree) Put(key string, value []byte) error {
 // Delete a key-value pair from the LSMTree.
 func (l *LSMTree) Delete(key string) error {
 	l.mu.Lock()
+
+	// Write to WAL before writing to memtable. We don't need to write to WAL
+	// while recovering from WAL.
+	if !l.inRecovery {
+		l.wal.WriteEntry(mustMarshal(&WALEntry{
+			Key:       key,
+			Command:   Command_DELETE,
+			Timestamp: time.Now().UnixNano(),
+		}))
+	}
+
 	l.memtable.Delete(key)
 	l.mu.Unlock()
 	if l.memtable.size > l.maxMemtableSize {
@@ -135,6 +186,12 @@ func (l *LSMTree) flushMemtable(memtable *Memtable) {
 
 	l.sstablesMu.Lock()
 	l.flushingQueueMu.Lock()
+
+	l.wal.CreateCheckpoint(mustMarshal(&WALEntry{
+		Key:       sstableFileName,
+		Command:   Command_WRITE_SST,
+		Timestamp: time.Now().UnixNano(),
+	}))
 
 	l.sstables = append(l.sstables, sst)
 	l.flushingQueue = l.flushingQueue[1:]
@@ -294,4 +351,67 @@ func (l *LSMTree) setCurrentSSTSequence() error {
 		l.current_sst_sequence = sequence
 	}
 	return nil
+}
+
+// Recover from the WAL. Read all entries from the WAL, after the last
+// checkpoint. This will give us all the entries that were written to the
+// memtable but not flushed to SSTables.
+func (l *LSMTree) recoverFromWAL() error {
+	l.inRecovery = true
+	defer func() {
+		l.inRecovery = false
+	}()
+	// Read all entries from WAL, after the last checkpoint. This will give us
+	// all the entries that were written to the memtable but not flushed to
+	// SSTables.
+	entries, err := l.readEntriesFromWAL()
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if err := l.processWALEntry(entry); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (l *LSMTree) readEntriesFromWAL() ([]*gw.WAL_Entry, error) {
+	entries, err := l.wal.ReadAllFromOffset(-1, true)
+	if err != nil {
+		// Attempt to repair the WAL.
+		_, err = l.wal.Repair()
+		if err != nil {
+			return nil, err
+		}
+		entries, err = l.wal.ReadAllFromOffset(-1, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return entries, nil
+}
+
+func (l *LSMTree) processWALEntry(entry *gw.WAL_Entry) error {
+	if entry.GetIsCheckpoint() {
+		// We may use this entry in the future to recover from more sophisticated
+		// failures.
+		return nil
+	}
+
+	walEntry := &WALEntry{}
+	mustUnmarshal(entry.GetData(), walEntry)
+
+	switch walEntry.Command {
+	case Command_PUT:
+		return l.Put(walEntry.Key, walEntry.Value)
+	case Command_DELETE:
+		return l.Delete(walEntry.Key)
+	case Command_WRITE_SST:
+		return errors.New("unexpected write sst command in WAL")
+	default:
+		return errors.New("unknown command in WAL")
+	}
 }

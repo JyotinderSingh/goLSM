@@ -1,3 +1,5 @@
+github.com/JyotinderSingh/go-wal v1.2.1 h1:YrkMlT5DbExF7uoM3FhSaW12NQ1VK5gsCcvXppaiEQ8=
+github.com/JyotinderSingh/go-wal v1.2.1/go.mod h1:oMFG3baG7fX6sBxBvft8J+osD9NOm1hkuY7APmY54hU=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
