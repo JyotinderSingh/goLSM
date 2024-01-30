@@ -206,6 +206,7 @@ func (l *LSMTree) flushMemtablesInQueue() error {
 }
 
 // Continuously listen on compactionChan for levels that need to be compacted.
+// Runs a tiered compaction on the LSMTree.
 func (l *LSMTree) compact() error {
 	defer l.wg.Done()
 	for {

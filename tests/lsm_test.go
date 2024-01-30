@@ -3,6 +3,7 @@ package tests
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -436,4 +437,63 @@ func TestWALRecovery(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
 		}
 	}
+}
+
+// Test compaction of SSTables in the LSMTree. Writes 50k key-value pairs to the
+// LSMTree and then checks that they all exist. Validates the presence of the
+// SSTables on disk.
+func TestLSMTreeCompaction(t *testing.T) {
+	t.Parallel()
+	dir := "TestLSMTreeCompaction"
+	l, err := golsm.OpenLSMTree(dir, 2048, true)
+	assert.Nil(t, err)
+	defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
+
+	// Write 50k key-value pairs to the LSMTree.
+	for i := 0; i < 50000; i++ {
+		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
+		assert.Nil(t, err)
+	}
+
+	// Check that the key-value pairs exist.
+	for i := 0; i < 50000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+	}
+
+	l.Close()
+
+	// Read the files in the directory.
+	files, err := os.ReadDir(dir)
+	assert.Nil(t, err)
+	assert.Less(t, 3, len(files), "Expected 3 files, got %v", len(files))
+
+	// Check that at least one file of each kind exists: prefix sstable_0, sstable_1, sstable_2.
+	var sstable0Exists, sstable1Exists, sstable2Exists bool
+	for _, file := range files {
+		if strings.Contains(file.Name(), "sstable_0") {
+			sstable0Exists = true
+		} else if strings.Contains(file.Name(), "sstable_1") {
+			sstable1Exists = true
+		} else if strings.Contains(file.Name(), "sstable_2") {
+			sstable2Exists = true
+		}
+	}
+	assert.True(t, sstable0Exists, "Expected at least SST at level 0 to exist")
+	assert.True(t, sstable1Exists, "Expected at least SST at level 1 to exist")
+	assert.True(t, sstable2Exists, "Expected at least SST at level 2 to exist")
+
+	l, err = golsm.OpenLSMTree(dir, 1000, true)
+	assert.Nil(t, err)
+
+	// Check that the key-value pairs still exist.
+	for i := 0; i < 50000; i++ {
+		value, err := l.Get(fmt.Sprintf("%d", i))
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
+	}
+
+	l.Close()
 }
