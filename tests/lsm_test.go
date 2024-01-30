@@ -55,24 +55,26 @@ func TestLSMTreePut(t *testing.T) {
 func TestLSMTreePutMany(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreePutMany"
-	l, err := golsm.OpenLSMTree(dir, 32000, true)
+	l, err := golsm.OpenLSMTree(dir, 300, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
 
 	defer l.Close()
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 		err := l.Put(fmt.Sprintf("%d", i), []byte(fmt.Sprintf("%d", i)))
 		assert.Nil(t, err)
 
 	}
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 		value, err := l.Get(fmt.Sprintf("%d", i))
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("%d", i), string(value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%d", i), string(value))
 	}
+
+	// time.Sleep(5 * time.Second)
 }
 
 // Checks SSTable loading on startup.
@@ -367,7 +369,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 func TestWALRecovery(t *testing.T) {
 	t.Parallel()
 	dir := "TestWALRecovery"
-	l, err := golsm.OpenLSMTree(dir, 64000, true)
+	l, err := golsm.OpenLSMTree(dir, 3200, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)

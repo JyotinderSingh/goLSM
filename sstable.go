@@ -16,23 +16,22 @@ type SSTable struct {
 }
 
 type SSTableIterator struct {
-	s     *SSTable
-	file  *os.File
-	Value *MemtableEntry
+	s     *SSTable       // Pointer to the associated SSTable
+	file  *os.File       // File handle for the on-disk SSTable file.
+	Value *MemtableEntry // Current entry
 }
 
 // Writes a list of MemtableKeyValue to a file in SSTable format.
 // Format of the file is:
-// 1. Size of the index (OffsetSize)
-// 2. Index data (Index Protobuf)
-// 3. Entries data (MemtableKeyValue Protobuf)
+// 1. Bloom filter size (OffsetSize)
+// 2. Bloom filter data (BloomFilter Protobuf)
+// 3. Index size (OffsetSize)
+// 4. Index data (Index Protobuf)
+// 5. Entries data
 //
 // The entries data is written in as:
 // 1. Size of the entry (OffsetSize)
-// 2. Entry data (MemtableKeyValue Protobuf)
-//
-// The index is a list of IndexEntry, which is a struct containing the key and
-// the offset of the entry in the file (after the index).
+// 2. Entry data (MemtableEntry Protobuf)
 func SerializeToSSTable(messages []*MemtableEntry, filename string) (*SSTable, error) {
 	bloomFilter, index, entriesBuffer, err := buildMetadataAndEntriesBuffer(messages)
 	if err != nil {

@@ -2,6 +2,7 @@ package golsm
 
 import (
 	"sync"
+	"time"
 
 	"github.com/huandu/skiplist"
 )
@@ -141,4 +142,16 @@ func (m *Memtable) GetEntries() []*MemtableEntry {
 	}
 
 	return results
+}
+
+func getMemtableEntry(key string, value *[]byte, command Command) *MemtableEntry {
+	entry := &MemtableEntry{
+		Key:       key,
+		Command:   command,
+		Timestamp: time.Now().UnixNano(),
+	}
+	if value != nil {
+		entry.Value = *value
+	}
+	return entry
 }

@@ -85,6 +85,7 @@ func readDataSize(file *os.File) (EntrySize, error) {
 	return size, nil
 }
 
+// Read a single entry from the file.
 func readEntryDataFromFile(file *os.File, size EntrySize) ([]byte, error) {
 	data := make([]byte, size)
 	if _, err := file.Read(data); err != nil {
@@ -93,6 +94,8 @@ func readEntryDataFromFile(file *os.File, size EntrySize) ([]byte, error) {
 	return data, nil
 }
 
+// Write the bloom filter, index, and entries to the SSTable file. Returns the
+// offset of the entries data.
 func writeSSTable(filename string, bloomFilterData []byte, indexData []byte, entriesBuffer io.Reader) (EntrySize, error) {
 	file, err := os.Create(filename)
 	if err != nil {
@@ -134,6 +137,7 @@ func writeSSTable(filename string, bloomFilterData []byte, indexData []byte, ent
 	return dataOffset, nil
 }
 
+// Read the bloom filter, index, and data offset from the SSTable file.
 func readSSTableMetadata(file *os.File) (*BloomFilter, *Index, EntrySize, error) {
 	var dataOffset EntrySize = 0
 
