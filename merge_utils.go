@@ -48,11 +48,11 @@ func (h *mergeHeap) Pop() interface{} {
 // them into a single range without any duplicate entries.
 // Deduplication is done by keeping track of the most recent entry for each key
 // and discarding the older ones using the timestamp.
-func mergeRanges(ranges [][]*MemtableEntry) [][]byte {
+func mergeRanges(ranges [][]*MemtableEntry) []KVPair {
 	minHeap := &mergeHeap{}
 	heap.Init(minHeap)
 
-	var results [][]byte
+	var results []KVPair
 
 	// Keep track of the most recent entry for each key, in sorted order of keys.
 	seen := skiplist.New(skiplist.String)
@@ -96,7 +96,7 @@ func mergeRanges(ranges [][]*MemtableEntry) [][]byte {
 			iter = iter.Next()
 			continue
 		}
-		results = append(results, entry.entry.Value)
+		results = append(results, KVPair{Key: entry.entry.Key, Value: entry.entry.Value})
 		iter = iter.Next()
 	}
 

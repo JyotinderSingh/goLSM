@@ -44,6 +44,11 @@ type level struct {
 	mu       sync.RWMutex // [Lock 2]: for sstables in this level.
 }
 
+type KVPair struct {
+	Key   string
+	Value []byte
+}
+
 type LSMTree struct {
 	memtable             *Memtable
 	mu                   sync.RWMutex   // [Lock 1]: for memtable.
@@ -233,7 +238,7 @@ func (l *LSMTree) Get(key string) ([]byte, error) {
 
 // RangeScan returns all the entries in the LSMTree that have keys in the range
 // [startKey, endKey]. The entries are returned in sorted order of keys.
-func (l *LSMTree) RangeScan(startKey string, endKey string) ([][]byte, error) {
+func (l *LSMTree) RangeScan(startKey string, endKey string) ([]KVPair, error) {
 	ranges := [][]*MemtableEntry{}
 	// We take all locks together to ensure a consistent view of the LSMTree for
 	// the range scan.

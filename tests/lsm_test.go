@@ -318,7 +318,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 
 	// Validate the entries
 	for i := 0; i < 26; i++ {
-		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]))
+		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i].Value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i].Value))
 	}
 
 	// Perform a RangeScan on a subset of the key-value pairs.
@@ -326,7 +326,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 13, len(values), "Expected 13 values, got %v", len(values))
 	for i := 0; i < 13; i++ {
-		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i]))
+		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i].Value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i, 'a'+i), string(values[i].Value))
 	}
 
 	l.Close()
@@ -339,7 +339,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 22, len(values), "Expected 22 values, got %v", len(values))
 	for i := 0; i < 22; i++ {
-		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i+2, 'a'+i+2), string(values[i]), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i+2, 'a'+i+2), string(values[i]))
+		assert.Equal(t, fmt.Sprintf("%c%c", 'a'+i+2, 'a'+i+2), string(values[i].Value), "Expected value to be '%v', got '%v'", fmt.Sprintf("%c%c", 'a'+i+2, 'a'+i+2), string(values[i].Value))
 	}
 
 	// Delete some key-value pairs.
