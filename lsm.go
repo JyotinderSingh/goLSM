@@ -130,7 +130,16 @@ func Open(directory string, maxMemtableSize int64, recoverFromWAL bool) (*LSMTre
 }
 
 func (l *LSMTree) Close() error {
-	l.addCurrentMemtableToFlushQueue()
+	l.mu.Lock()
+	l.flushingQueueMu.Lock()
+	l.flushingQueue = append(l.flushingQueue, l.memtable)
+	l.flushingQueueMu.Unlock()
+
+	l.flushingChan <- l.memtable
+	l.memtable = NewMemtable()
+
+	l.mu.Unlock()
+
 	l.cancel()
 	l.wg.Wait()
 	l.wal.Close()
@@ -142,6 +151,7 @@ func (l *LSMTree) Close() error {
 // Insert a key-value pair into the LSMTree.
 func (l *LSMTree) Put(key string, value []byte) error {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	// Write to WAL before writing to memtable. We don't need to write to WAL
 	// while recovering from WAL.
@@ -156,12 +166,15 @@ func (l *LSMTree) Put(key string, value []byte) error {
 
 	l.memtable.Put(key, value)
 
-	memtableIsFull := l.memtable.SizeInBytes() > l.maxMemtableSize
+	// Check if the memtable has exceeded the maximum size and needs to be flushed
+	// to an SSTable.
+	if l.memtable.SizeInBytes() > l.maxMemtableSize {
+		l.flushingQueueMu.Lock()
+		l.flushingQueue = append(l.flushingQueue, l.memtable)
+		l.flushingQueueMu.Unlock()
 
-	l.mu.Unlock()
-
-	if memtableIsFull {
-		l.addCurrentMemtableToFlushQueue()
+		l.flushingChan <- l.memtable
+		l.memtable = NewMemtable()
 	}
 
 	return nil
@@ -170,6 +183,7 @@ func (l *LSMTree) Put(key string, value []byte) error {
 // Delete a key-value pair from the LSMTree.
 func (l *LSMTree) Delete(key string) error {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	// Write to WAL before writing to memtable. We don't need to write to WAL
 	// while recovering from WAL.
@@ -183,12 +197,15 @@ func (l *LSMTree) Delete(key string) error {
 
 	l.memtable.Delete(key)
 
-	memtableIsFull := l.memtable.SizeInBytes() > l.maxMemtableSize
+	// Check if the memtable has exceeded the maximum size and needs to be flushed
+	// to an SSTable.
+	if l.memtable.SizeInBytes() > l.maxMemtableSize {
+		l.flushingQueueMu.Lock()
+		l.flushingQueue = append(l.flushingQueue, l.memtable)
+		l.flushingQueueMu.Unlock()
 
-	l.mu.Unlock()
-
-	if memtableIsFull {
-		l.addCurrentMemtableToFlushQueue()
+		l.flushingChan <- l.memtable
+		l.memtable = NewMemtable()
 	}
 	return nil
 }
@@ -338,6 +355,7 @@ func (l *LSMTree) compactLevel(compactionCandidate int) error {
 		return nil
 	}
 
+	// Lock the level while we check if we need to compact it.
 	l.levels[compactionCandidate].mu.RLock()
 
 	// Check if the number of SSTables in this level is less than the limit.
@@ -365,7 +383,7 @@ func (l *LSMTree) compactLevel(compactionCandidate int) error {
 	l.deleteSSTablesAtLevel(compactionCandidate, iterators)
 
 	// 4. Add the new SSTable to the next level.
-	l.addSSTableToLevel(mergedSSTable, compactionCandidate)
+	l.addSSTableToLevel(mergedSSTable, compactionCandidate+1)
 
 	return nil
 }
@@ -477,10 +495,12 @@ func (l *LSMTree) deleteSSTablesAtLevel(level int, iterators []*SSTableIterator)
 
 // Add an SSTable to the level.
 func (l *LSMTree) addSSTableToLevel(sst *SSTable, level int) {
-	l.levels[level+1].mu.Lock()
-	l.levels[level+1].sstables = append(l.levels[level+1].sstables, sst)
-	l.compactionChan <- level + 1
-	l.levels[level+1].mu.Unlock()
+	l.levels[level].mu.Lock()
+	l.levels[level].sstables = append(l.levels[level].sstables, sst)
+	// Send a signal on the compactionChan to indicate that a new SSTable has
+	// been created.
+	l.compactionChan <- level
+	l.levels[level].mu.Unlock()
 }
 
 // Flush a memtable to an on-disk SSTable.
@@ -515,19 +535,6 @@ func (l *LSMTree) flushMemtable(memtable *Memtable) {
 	// Send a signal on the compactionChan to indicate that a new SSTable has
 	// been created.
 	l.compactionChan <- 0
-}
-
-func (l *LSMTree) addCurrentMemtableToFlushQueue() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.flushingQueueMu.Lock()
-	l.flushingQueue = append(l.flushingQueue, l.memtable)
-	l.flushingQueueMu.Unlock()
-
-	l.flushingChan <- l.memtable
-
-	l.memtable = NewMemtable()
 }
 
 func (l *LSMTree) readEntriesFromWAL() ([]*gw.WAL_Entry, error) {
