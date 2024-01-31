@@ -10,7 +10,7 @@ goLSM is an LSM tree based storage engine written in Go. It offers a simple key-
 1. Multi-component LSM tree: Includes a high-throughput in-memory component and multiple disk-based components for persistence.
 1. Read-optimized: Uses a Bloom filters and on-disk indexes to speed up reads.
 1. Automatic compaction: Automatically compacts disk-based components using a tiered compaction strategy to control read and write amplification.
-1. Crash recovery: Uses a write-ahead log to allow for crash recovery.
+1. Crash recovery: Uses a [custom write-ahead log](https://github.com/JyotinderSingh/go-wal) to allow for crash recovery.
 
 ## Usage
 
@@ -71,7 +71,7 @@ err := db.Delete("key")
 
 ### Closing the DB
 
-Finally, you should close the DB when you're done using it. You can do this using the Close method.
+Finally, you should close the DB when you're done using it. You can do this using the Close method. Closing the DB will flush the in-memory component to disk, close the write-ahead log, and run any scheduled compactions.
 
 ```go
 err := db.Close()
