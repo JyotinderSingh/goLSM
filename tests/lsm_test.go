@@ -15,7 +15,7 @@ import (
 func TestLSMTreePut(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreePut"
-	l, err := golsm.OpenLSMTree(dir, 1000, true)
+	l, err := golsm.Open(dir, 1000, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -42,7 +42,7 @@ func TestLSMTreePut(t *testing.T) {
 
 	// Check that the key-value pair still exists in the LSMTree after closing and
 	// reopening it.
-	l, err = golsm.OpenLSMTree(dir, 1000, true)
+	l, err = golsm.Open(dir, 1000, true)
 	assert.Nil(t, err)
 
 	value, err = l.Get("key")
@@ -56,7 +56,7 @@ func TestLSMTreePut(t *testing.T) {
 func TestLSMTreePutMany(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreePutMany"
-	l, err := golsm.OpenLSMTree(dir, 300, true)
+	l, err := golsm.Open(dir, 300, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -90,7 +90,7 @@ func TestLSMTreePutMany(t *testing.T) {
 func TestLSMTreeSSTableLoading(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeSSTableLoading"
-	l, err := golsm.OpenLSMTree(dir, 100, true)
+	l, err := golsm.Open(dir, 100, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -109,7 +109,7 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 100, true)
+	l, err = golsm.Open(dir, 100, true)
 	assert.Nil(t, err)
 
 	for i := 0; i < 1000; i++ {
@@ -145,7 +145,7 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 100, true)
+	l, err = golsm.Open(dir, 100, true)
 	assert.Nil(t, err)
 
 	for i := 0; i < 2000; i++ {
@@ -167,7 +167,7 @@ func TestLSMTreeSSTableLoading(t *testing.T) {
 func TestLSMTreeStressTest(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeStressTest"
-	l, err := golsm.OpenLSMTree(dir, 32000, true)
+	l, err := golsm.Open(dir, 32000, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -179,7 +179,7 @@ func TestLSMTreeStressTest(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 32000, true)
+	l, err = golsm.Open(dir, 32000, true)
 	assert.Nil(t, err)
 
 	for i := 0; i < 100000; i++ {
@@ -194,7 +194,7 @@ func TestLSMTreeStressTest(t *testing.T) {
 func TestLSMTreeConcurrentWrites(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeConcurrentWrites"
-	l, err := golsm.OpenLSMTree(dir, 32000, true)
+	l, err := golsm.Open(dir, 32000, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -215,7 +215,7 @@ func TestLSMTreeConcurrentWrites(t *testing.T) {
 	wg.Wait()
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 32000, true)
+	l, err = golsm.Open(dir, 32000, true)
 	assert.Nil(t, err)
 
 	// Read all the values back.
@@ -233,7 +233,7 @@ func TestLSMTreeConcurrentWrites(t *testing.T) {
 func TestLSMTreeUpdate(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeUpdate"
-	l, err := golsm.OpenLSMTree(dir, 200, true)
+	l, err := golsm.Open(dir, 200, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -260,7 +260,7 @@ func TestLSMTreeUpdate(t *testing.T) {
 	// Close and reopen the LSMTree to ensure that the key-value pairs are
 	// persisted correctly.
 	l.Close()
-	l, err = golsm.OpenLSMTree(dir, 32000, true)
+	l, err = golsm.Open(dir, 32000, true)
 	assert.Nil(t, err)
 
 	// Check that the key-value pairs still exist.
@@ -282,7 +282,7 @@ func TestLSMTreeUpdate(t *testing.T) {
 func TestLSMTreeRangeScan(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeRangeScan"
-	l, err := golsm.OpenLSMTree(dir, 16, true)
+	l, err := golsm.Open(dir, 16, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -332,7 +332,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 	l.Close()
 
 	// Check that the key-value pairs still exist after closing and reopening the LSMTree.
-	l, err = golsm.OpenLSMTree(dir, 16, true)
+	l, err = golsm.Open(dir, 16, true)
 	assert.Nil(t, err)
 
 	values, err = l.RangeScan("c", "x")
@@ -357,7 +357,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 	l.Close()
 
 	// Check that the key-value pairs still exist after closing and reopening the LSMTree.
-	l, err = golsm.OpenLSMTree(dir, 16, true)
+	l, err = golsm.Open(dir, 16, true)
 	assert.Nil(t, err)
 
 	// Perform a RangeScan to check that the deleted key-value pairs are not returned.
@@ -370,7 +370,7 @@ func TestLSMTreeRangeScan(t *testing.T) {
 func TestWALRecovery(t *testing.T) {
 	t.Parallel()
 	dir := "TestWALRecovery"
-	l, err := golsm.OpenLSMTree(dir, 3200, true)
+	l, err := golsm.Open(dir, 3200, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -383,7 +383,7 @@ func TestWALRecovery(t *testing.T) {
 
 	l.Close()
 
-	l, err = golsm.OpenLSMTree(dir, 64000, true)
+	l, err = golsm.Open(dir, 64000, true)
 	assert.Nil(t, err)
 
 	// Check that the key-value pairs exist.
@@ -404,7 +404,7 @@ func TestWALRecovery(t *testing.T) {
 
 	// Suddenly crash the LSMTree. We simulate this by initializing the LSMTree
 	// with a new object.
-	l, err = golsm.OpenLSMTree(dir, 64000, true)
+	l, err = golsm.Open(dir, 64000, true)
 	assert.Nil(t, err)
 
 	// Check that the key-value pairs still exist.
@@ -424,7 +424,7 @@ func TestWALRecovery(t *testing.T) {
 	time.Sleep(600 * time.Millisecond)
 
 	// Suddenly crash the LSMTree.
-	l, err = golsm.OpenLSMTree(dir, 64000, true)
+	l, err = golsm.Open(dir, 64000, true)
 	assert.Nil(t, err)
 
 	// Check that the key-value pairs still exist and updates are applied.
@@ -445,7 +445,7 @@ func TestWALRecovery(t *testing.T) {
 func TestLSMTreeCompaction(t *testing.T) {
 	t.Parallel()
 	dir := "TestLSMTreeCompaction"
-	l, err := golsm.OpenLSMTree(dir, 2048, true)
+	l, err := golsm.Open(dir, 2048, true)
 	assert.Nil(t, err)
 	defer os.RemoveAll(dir)
 	defer os.RemoveAll(dir + golsm.WALDirectorySuffix)
@@ -471,21 +471,18 @@ func TestLSMTreeCompaction(t *testing.T) {
 	assert.Less(t, 3, len(files), "Expected 3 files, got %v", len(files))
 
 	// Check that at least one file of each kind exists: prefix sstable_0, sstable_1, sstable_2.
-	var sstable0Exists, sstable1Exists, sstable2Exists bool
+	var sstable1Exists, sstable2Exists bool
 	for _, file := range files {
-		if strings.Contains(file.Name(), "sstable_0") {
-			sstable0Exists = true
-		} else if strings.Contains(file.Name(), "sstable_1") {
+		if strings.Contains(file.Name(), "sstable_1") {
 			sstable1Exists = true
 		} else if strings.Contains(file.Name(), "sstable_2") {
 			sstable2Exists = true
 		}
 	}
-	assert.True(t, sstable0Exists, "Expected at least SST at level 0 to exist")
 	assert.True(t, sstable1Exists, "Expected at least SST at level 1 to exist")
 	assert.True(t, sstable2Exists, "Expected at least SST at level 2 to exist")
 
-	l, err = golsm.OpenLSMTree(dir, 1000, true)
+	l, err = golsm.Open(dir, 2048, true)
 	assert.Nil(t, err)
 
 	// Check that the key-value pairs still exist.

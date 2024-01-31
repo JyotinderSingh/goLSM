@@ -103,11 +103,11 @@ func mergeRanges(ranges [][]*MemtableEntry) [][]byte {
 	return results
 }
 
-// Performs a k-way merge on a list of possibly overlapping entries from the SSTs
+// Performs a k-way merge on SSTable iterators of possibly overlapping ranges
 // and merges them into a single range without any duplicate entries.
 // Deduplication is done by keeping track of the most recent entry for each key
 // and discarding the older ones using the timestamp.
-func mergeEntriesFromSSTs(iterators []*SSTableIterator) []*MemtableEntry {
+func mergeIterators(iterators []*SSTableIterator) []*MemtableEntry {
 	minHeap := &mergeHeap{}
 	heap.Init(minHeap)
 
@@ -118,6 +118,9 @@ func mergeEntriesFromSSTs(iterators []*SSTableIterator) []*MemtableEntry {
 
 	// Add the iterators to the heap.
 	for _, iterator := range iterators {
+		if iterator == nil {
+			continue
+		}
 		heap.Push(minHeap, heapEntry{entry: iterator.Value, iterator: iterator})
 	}
 

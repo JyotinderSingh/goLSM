@@ -14,6 +14,10 @@ import (
 	gw "github.com/JyotinderSingh/go-wal"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+// Constants
+////////////////////////////////////////////////////////////////////////////////
+
 const (
 	SSTableFilePrefix  = "sstable_"
 	WALDirectorySuffix = "_wal"
@@ -30,6 +34,10 @@ var maxLevelSSTables = map[int]int{
 	5: 128,
 	6: 256,
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Types
+////////////////////////////////////////////////////////////////////////////////
 
 type level struct {
 	sstables []*SSTable   // SSTables in this level
@@ -54,14 +62,18 @@ type LSMTree struct {
 	wg                   sync.WaitGroup
 }
 
-// Create a new LSMTree.
+////////////////////////////////////////////////////////////////////////////////
+// Public API
+////////////////////////////////////////////////////////////////////////////////
+
+// Opens an LSMTree. If the directory does not exist, it will be created.
 // directory: The directory where the SSTables will be stored.
-// maxMemtableSize: The maximum size of the memtable before it is flushed to an
-// SSTable.
+// maxMemtableSize: The maximum size of the memtable in bytes before it is
+// flushed to an SSTable.
 // runRecovery: If true, the LSMTree will recover from the WAL on startup.
 // On startup, the LSMTree will load all the SSTables handles (if any) from disk
 // into memory.
-func OpenLSMTree(directory string, maxMemtableSize int64, runRecovery bool) (*LSMTree, error) {
+func Open(directory string, maxMemtableSize int64, recoverFromWAL bool) (*LSMTree, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Setup the WAL for the LSMTree.
@@ -98,12 +110,12 @@ func OpenLSMTree(directory string, maxMemtableSize int64, runRecovery bool) (*LS
 	}
 
 	lsm.wg.Add(2)
-	go lsm.compact()
-	go lsm.flushMemtablesInQueue()
+	go lsm.backgroundCompaction()
+	go lsm.backgroundMemtableFlushing()
 
 	// Recover any entries that were written to the WAL but not flushed to
 	// SSTables.
-	if runRecovery {
+	if recoverFromWAL {
 		if err := lsm.recoverFromWAL(); err != nil {
 			return nil, err
 		}
@@ -174,171 +186,6 @@ func (l *LSMTree) Delete(key string) error {
 		l.addCurrentMemtableToFlushQueue()
 	}
 	return nil
-}
-
-func (l *LSMTree) addCurrentMemtableToFlushQueue() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.flushingQueueMu.Lock()
-	l.flushingQueue = append(l.flushingQueue, l.memtable)
-	l.flushingQueueMu.Unlock()
-
-	l.flushingChan <- l.memtable
-
-	l.memtable = NewMemtable()
-}
-
-// Continuously listen on flushingChan for memtables to flush. When a memtable
-// is received, flush it to an SSTable. When the context is cancelled, return.
-func (l *LSMTree) flushMemtablesInQueue() error {
-	defer l.wg.Done()
-	for {
-		select {
-		case <-l.ctx.Done():
-			if len(l.flushingChan) == 0 {
-				return nil
-			}
-		case memtable := <-l.flushingChan:
-			l.flushMemtable(memtable)
-		}
-	}
-}
-
-// Continuously listen on compactionChan for levels that need to be compacted.
-// Runs a tiered compaction on the LSMTree.
-func (l *LSMTree) compact() error {
-	defer l.wg.Done()
-	for {
-		select {
-		case <-l.ctx.Done():
-			readyToExit := true
-			// Check if all levels have less than the maximum number of SSTables.
-			// If yes, we can exit.
-			for idx, level := range l.levels {
-				level.mu.RLock()
-				if len(level.sstables) > maxLevelSSTables[idx] {
-					// If any level has more than the maximum number of SSTables,
-					// we need to compact it.
-					l.compactionChan <- idx
-					readyToExit = false
-				}
-				level.mu.RUnlock()
-			}
-			if readyToExit {
-				return nil
-			}
-
-		case compactionCandidate := <-l.compactionChan:
-			l.compactLevel(compactionCandidate)
-		}
-	}
-}
-
-// Compact the SSTables in the level that contains the compaction candidate.
-func (l *LSMTree) compactLevel(compactionCandidate int) error {
-	if compactionCandidate == maxLevels-1 {
-		// We don't need to compact the SSTables in the last level.
-		return nil
-	}
-
-	l.levels[compactionCandidate].mu.RLock()
-
-	// Check if the number of SSTables in this level is less than the maximum.
-	// If yes, we don't need to compact the SSTables in this level.
-	if len(l.levels[compactionCandidate].sstables) < maxLevelSSTables[compactionCandidate] {
-		l.levels[compactionCandidate].mu.RUnlock()
-		return nil
-	}
-
-	// 1. First get iterators for all the SSTables in this level.
-	_, iterators := l.getSSTableHandlesAtLevel(compactionCandidate)
-
-	l.levels[compactionCandidate].mu.RUnlock()
-
-	// 2. Merge all the SSTables into a new SSTable.
-	mergedSSTable, err := l.mergeSSTables(iterators, compactionCandidate+1)
-	if err != nil {
-		return err
-	}
-
-	// 3. Delete the old SSTables.
-	l.deleteSSTablesAtLevel(compactionCandidate, iterators)
-
-	// 4. Add the new SSTable to the next level.
-	l.addSSTableToLevel(mergedSSTable, compactionCandidate)
-
-	return nil
-}
-
-// Get the SSTables and iterators for the SSTables at the level. Not thread-safe.
-func (l *LSMTree) getSSTableHandlesAtLevel(level int) ([]*SSTable, []*SSTableIterator) {
-	sstables := l.levels[level].sstables
-	iterators := make([]*SSTableIterator, len(sstables))
-	for i, sstable := range sstables {
-		iterators[i] = sstable.Front()
-	}
-	return sstables, iterators
-}
-
-// Delete the SSTables identified by the iterators.
-func (l *LSMTree) deleteSSTablesAtLevel(level int, iterators []*SSTableIterator) {
-	l.levels[level].mu.Lock()
-	l.levels[level].sstables = l.levels[level].sstables[len(iterators):]
-	for _, it := range iterators {
-		// Delete the file pointed to by the iterator.
-		if err := os.Remove(it.s.file.Name()); err != nil {
-			panic(err)
-		}
-	}
-	l.levels[level].mu.Unlock()
-}
-
-// Add an SSTable to the level.
-func (l *LSMTree) addSSTableToLevel(sst *SSTable, level int) {
-	l.levels[level+1].mu.Lock()
-	l.levels[level+1].sstables = append(l.levels[level+1].sstables, sst)
-	l.compactionChan <- level + 1
-	l.levels[level+1].mu.Unlock()
-}
-
-// Flush a memtable to an on-disk SSTable.
-func (l *LSMTree) flushMemtable(memtable *Memtable) {
-	if memtable.size == 0 {
-		return
-	}
-	atomic.AddUint64(&l.current_sst_sequence, 1)
-	sstableFileName := l.getSSTableFilename(0)
-
-	sst, err := SerializeToSSTable(memtable.GetEntries(),
-		sstableFileName)
-	if err != nil {
-		panic(err)
-	}
-
-	l.levels[0].mu.Lock()
-	l.flushingQueueMu.Lock()
-
-	l.wal.CreateCheckpoint(mustMarshal(&WALEntry{
-		Key:       sstableFileName,
-		Command:   Command_WRITE_SST,
-		Timestamp: time.Now().UnixNano(),
-	}))
-
-	l.levels[0].sstables = append(l.levels[0].sstables, sst)
-	l.flushingQueue = l.flushingQueue[1:]
-
-	l.flushingQueueMu.Unlock()
-	l.levels[0].mu.Unlock()
-
-	// Send a signal on the compactionChan to indicate that a new SSTable has
-	// been created.
-	l.compactionChan <- 0
-}
-
-// Get the filename for the next SSTable.
-func (l *LSMTree) getSSTableFilename(level int) string {
-	return fmt.Sprintf("%s/%s%d_%d", l.directory, SSTableFilePrefix, level, atomic.LoadUint64(&l.current_sst_sequence))
 }
 
 // Get the value for a given key from the LSMTree. Returns nil if the key is not
@@ -424,6 +271,100 @@ func (l *LSMTree) RangeScan(startKey string, endKey string) ([][]byte, error) {
 	return mergeRanges(ranges), nil
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Utilities
+////////////////////////////////////////////////////////////////////////////////
+
+// Continuously listen on flushingChan for memtables to flush. When a memtable
+// is received, flush it to an SSTable. When the context is cancelled, return.
+func (l *LSMTree) backgroundMemtableFlushing() error {
+	defer l.wg.Done()
+	for {
+		select {
+		case <-l.ctx.Done():
+			if len(l.flushingChan) == 0 {
+				return nil
+			}
+		case memtable := <-l.flushingChan:
+			l.flushMemtable(memtable)
+		}
+	}
+}
+
+// Continuously listen on compactionChan for levels that need to be compacted.
+// Runs a tiered compaction on the LSMTree. When the context is cancelled,
+// return.
+func (l *LSMTree) backgroundCompaction() error {
+	defer l.wg.Done()
+	for {
+		select {
+		case <-l.ctx.Done():
+			// Finish pending compactions.
+			if readyToExit := l.checkAndTriggerCompaction(); readyToExit {
+				return nil
+			}
+
+		case compactionCandidate := <-l.compactionChan:
+			l.compactLevel(compactionCandidate)
+		}
+	}
+}
+
+// Check if all levels have less than the maximum number of SSTables.
+// If any level has more than the maximum number of SSTables, trigger compaction.
+// Returns true if all levels are ready to exit, false otherwise.
+func (l *LSMTree) checkAndTriggerCompaction() bool {
+	readyToExit := true
+	for idx, level := range l.levels {
+		level.mu.RLock()
+		if len(level.sstables) > maxLevelSSTables[idx] {
+			l.compactionChan <- idx
+			readyToExit = false
+		}
+		level.mu.RUnlock()
+	}
+	return readyToExit
+}
+
+// Compact the SSTables in the compaction candidate level.
+func (l *LSMTree) compactLevel(compactionCandidate int) error {
+	if compactionCandidate == maxLevels-1 {
+		// We don't need to compact the SSTables in the last level.
+		return nil
+	}
+
+	l.levels[compactionCandidate].mu.RLock()
+
+	// Check if the number of SSTables in this level is less than the limit.
+	// If yes, we don't need to compact this level.
+	if len(l.levels[compactionCandidate].sstables) < maxLevelSSTables[compactionCandidate] {
+		l.levels[compactionCandidate].mu.RUnlock()
+		return nil
+	}
+
+	// 1. First get iterators for all the SSTables in this level.
+	_, iterators := l.getSSTableHandlesAtLevel(compactionCandidate)
+
+	// We can release the lock on the level now while we process the SSTables. This
+	// is safe because these SSTables are immutable, and can only be deleted by
+	// this function (which is single-threaded).
+	l.levels[compactionCandidate].mu.RUnlock()
+
+	// 2. Merge all the SSTables into a new SSTable.
+	mergedSSTable, err := l.mergeSSTables(iterators, compactionCandidate+1)
+	if err != nil {
+		return err
+	}
+
+	// 3. Delete the old SSTables.
+	l.deleteSSTablesAtLevel(compactionCandidate, iterators)
+
+	// 4. Add the new SSTable to the next level.
+	l.addSSTableToLevel(mergedSSTable, compactionCandidate)
+
+	return nil
+}
+
 // Loads all the SSTables from disk into memory. Also sorts the SSTables by
 // sequence number. This function should be called on startup.
 func (l *LSMTree) loadSSTables() error {
@@ -436,10 +377,7 @@ func (l *LSMTree) loadSSTables() error {
 	}
 
 	l.sortSSTablesBySequenceNumber()
-
-	if err := l.getCurrentSSTSequenceInLevel(0); err != nil {
-		return err
-	}
+	l.initializeCurrentSequenceNumber()
 
 	return nil
 }
@@ -469,52 +407,6 @@ func (l *LSMTree) loadSSTablesFromDisk() error {
 	return nil
 }
 
-// Sort the SSTables by sequence number.
-// Example: sstable_1, sstable_2, sstable_3, sstable_4
-func (l *LSMTree) sortSSTablesBySequenceNumber() {
-	for _, level := range l.levels {
-		sort.Slice(level.sstables, func(i, j int) bool {
-			iSequence := l.getSequenceNumber(level.sstables[i].file.Name())
-			jSequence := l.getSequenceNumber(level.sstables[j].file.Name())
-			return iSequence < jSequence
-		})
-	}
-}
-
-// Get the sequence number from the SSTable filename.
-// Example: sstable_0_123 -> 123
-func (l *LSMTree) getSequenceNumber(filename string) uint64 {
-	// directory + "/" + sstable_ + level (single digit) + _ + 1
-	sequenceStr := filename[len(l.directory)+1+2+len(SSTableFilePrefix):]
-	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-	return sequence
-}
-
-// Get the level from the SSTable filename.
-// Example: sstable_0_123 -> 0
-func (l *LSMTree) getLevelFromSSTableFilename(filename string) int {
-	// directory + "/" + sstable_ + level (single digit) + _ + 1
-	levelStr := filename[len(l.directory)+1+len(SSTableFilePrefix) : len(l.directory)+2+len(SSTableFilePrefix)]
-	level, err := strconv.Atoi(levelStr)
-	if err != nil {
-		panic(err)
-	}
-	return level
-}
-
-// Set the current SST sequence number.
-func (l *LSMTree) getCurrentSSTSequenceInLevel(level int) error {
-	if len(l.levels[level].sstables) > 0 {
-		lastSSTable := l.levels[level].sstables[len(l.levels[level].sstables)-1]
-		sequence := l.getSequenceNumber(lastSSTable.file.Name())
-		atomic.StoreUint64(&l.current_sst_sequence, sequence)
-	}
-	return nil
-}
-
 // Recover from the WAL. Read all entries from the WAL, after the last
 // checkpoint. This will give us all the entries that were written to the
 // memtable but not flushed to SSTables.
@@ -538,6 +430,99 @@ func (l *LSMTree) recoverFromWAL() error {
 	}
 
 	return nil
+}
+
+// Runs a merge on the iterators and creates a new SSTable from the merged
+// entries.
+func (l *LSMTree) mergeSSTables(iterators []*SSTableIterator, targetLevel int) (*SSTable, error) {
+	mergedEntries := mergeIterators(iterators)
+
+	sstableFileName := l.getSSTableFilename(targetLevel)
+
+	sst, err := SerializeToSSTable(mergedEntries, sstableFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	return sst, nil
+}
+
+// Get the SSTables and iterators for the SSTables at the level. Not thread-safe.
+func (l *LSMTree) getSSTableHandlesAtLevel(level int) ([]*SSTable, []*SSTableIterator) {
+	sstables := l.levels[level].sstables
+	iterators := make([]*SSTableIterator, len(sstables))
+	for i, sstable := range sstables {
+		iterators[i] = sstable.Front()
+	}
+	return sstables, iterators
+}
+
+// Delete the SSTables identified by the iterators.
+func (l *LSMTree) deleteSSTablesAtLevel(level int, iterators []*SSTableIterator) {
+	l.levels[level].mu.Lock()
+	l.levels[level].sstables = l.levels[level].sstables[len(iterators):]
+	for _, it := range iterators {
+		// Delete the file pointed to by the iterator.
+		if err := os.Remove(it.s.file.Name()); err != nil {
+			panic(err)
+		}
+	}
+	l.levels[level].mu.Unlock()
+}
+
+// Add an SSTable to the level.
+func (l *LSMTree) addSSTableToLevel(sst *SSTable, level int) {
+	l.levels[level+1].mu.Lock()
+	l.levels[level+1].sstables = append(l.levels[level+1].sstables, sst)
+	l.compactionChan <- level + 1
+	l.levels[level+1].mu.Unlock()
+}
+
+// Flush a memtable to an on-disk SSTable.
+func (l *LSMTree) flushMemtable(memtable *Memtable) {
+	if memtable.size == 0 {
+		return
+	}
+	atomic.AddUint64(&l.current_sst_sequence, 1)
+	sstableFileName := l.getSSTableFilename(0)
+
+	sst, err := SerializeToSSTable(memtable.GetEntries(),
+		sstableFileName)
+	if err != nil {
+		panic(err)
+	}
+
+	l.levels[0].mu.Lock()
+	l.flushingQueueMu.Lock()
+
+	l.wal.CreateCheckpoint(mustMarshal(&WALEntry{
+		Key:       sstableFileName,
+		Command:   Command_WRITE_SST,
+		Timestamp: time.Now().UnixNano(),
+	}))
+
+	l.levels[0].sstables = append(l.levels[0].sstables, sst)
+	l.flushingQueue = l.flushingQueue[1:]
+
+	l.flushingQueueMu.Unlock()
+	l.levels[0].mu.Unlock()
+
+	// Send a signal on the compactionChan to indicate that a new SSTable has
+	// been created.
+	l.compactionChan <- 0
+}
+
+func (l *LSMTree) addCurrentMemtableToFlushQueue() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.flushingQueueMu.Lock()
+	l.flushingQueue = append(l.flushingQueue, l.memtable)
+	l.flushingQueueMu.Unlock()
+
+	l.flushingChan <- l.memtable
+
+	l.memtable = NewMemtable()
 }
 
 func (l *LSMTree) readEntriesFromWAL() ([]*gw.WAL_Entry, error) {
@@ -581,17 +566,62 @@ func (l *LSMTree) processWALEntry(entry *gw.WAL_Entry) error {
 	}
 }
 
-// Runs a merge on the iterators and creates a new SSTable from the merged
-// entries.
-func (l *LSMTree) mergeSSTables(iterators []*SSTableIterator, targetLevel int) (*SSTable, error) {
-	mergedEntries := mergeEntriesFromSSTs(iterators)
+// Sort the SSTables by sequence number.
+// Example: sstable_0_1, sstable_0_2, sstable_0_3, sstable_0_4
+func (l *LSMTree) sortSSTablesBySequenceNumber() {
+	for _, level := range l.levels {
+		sort.Slice(level.sstables, func(i, j int) bool {
+			iSequence := l.getSequenceNumber(level.sstables[i].file.Name())
+			jSequence := l.getSequenceNumber(level.sstables[j].file.Name())
+			return iSequence < jSequence
+		})
+	}
+}
 
-	sstableFileName := l.getSSTableFilename(targetLevel)
-
-	sst, err := SerializeToSSTable(mergedEntries, sstableFileName)
+// Get the sequence number from the SSTable filename.
+// Example: sstable_0_123 -> 123
+func (l *LSMTree) getSequenceNumber(filename string) uint64 {
+	// directory + "/" + sstable_ + level (single digit) + _ + 1
+	sequenceStr := filename[len(l.directory)+1+2+len(SSTableFilePrefix):]
+	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
-		return nil, err
+		panic(err)
+	}
+	return sequence
+}
+
+// Get the level from the SSTable filename.
+// Example: sstable_0_123 -> 0
+func (l *LSMTree) getLevelFromSSTableFilename(filename string) int {
+	// directory + "/" + sstable_ + level (single digit) + _ + 1
+	levelStr := filename[len(l.directory)+1+len(SSTableFilePrefix) : len(l.directory)+2+len(SSTableFilePrefix)]
+	level, err := strconv.Atoi(levelStr)
+	if err != nil {
+		panic(err)
+	}
+	return level
+}
+
+// Set the current_sst_sequence to the maximum sequence number found in any of
+// the SSTables.
+func (l *LSMTree) initializeCurrentSequenceNumber() error {
+	var maxSequence uint64
+	for _, level := range l.levels {
+		if len(level.sstables) > 0 {
+			lastSSTable := level.sstables[len(level.sstables)-1]
+			sequence := l.getSequenceNumber(lastSSTable.file.Name())
+			if sequence > maxSequence {
+				maxSequence = sequence
+			}
+		}
 	}
 
-	return sst, nil
+	atomic.StoreUint64(&l.current_sst_sequence, maxSequence)
+
+	return nil
+}
+
+// Get the filename for the next SSTable.
+func (l *LSMTree) getSSTableFilename(level int) string {
+	return fmt.Sprintf("%s/%s%d_%d", l.directory, SSTableFilePrefix, level, atomic.LoadUint64(&l.current_sst_sequence))
 }

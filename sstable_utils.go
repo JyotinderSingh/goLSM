@@ -7,6 +7,7 @@ import (
 	"os"
 )
 
+// Generate a bloom filter, index, and entries buffer from a list of Memtable entries.
 func buildMetadataAndEntriesBuffer(messages []*MemtableEntry) (*BloomFilter, *Index, *bytes.Buffer, error) {
 	var index []*IndexEntry
 	var bloomFilter *BloomFilter = newBloomFilter(1000000)
