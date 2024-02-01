@@ -1,7 +1,6 @@
 package golsm
 
 import (
-	"sync"
 	"time"
 
 	"github.com/huandu/skiplist"
@@ -11,7 +10,6 @@ import (
 type Memtable struct {
 	data skiplist.SkipList
 	size int64 // Size of the Memtable in bytes.
-	mu   sync.RWMutex
 }
 
 // Create a new Memtable.
@@ -22,11 +20,8 @@ func NewMemtable() *Memtable {
 	}
 }
 
-// Insert a key-value pair into the Memtable.
+// Insert a key-value pair into the Memtable. Not thread-safe.
 func (m *Memtable) Put(key string, value []byte) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	sizeChange := int64(len(value))
 	existingEntry := m.data.Get(key)
 	if existingEntry != nil {
@@ -44,11 +39,8 @@ func (m *Memtable) Put(key string, value []byte) {
 	m.size += sizeChange
 }
 
-// Delete a key-value pair from the Memtable.
+// Delete a key-value pair from the Memtable. Not thread-safe.
 func (m *Memtable) Delete(key string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	// If the entry already exists, we need to account for the size of the
 	// old value.
 	existingEntry := m.data.Get(key)
@@ -64,11 +56,9 @@ func (m *Memtable) Delete(key string) {
 	m.data.Set(key, getMemtableEntry(key, nil, Command_DELETE))
 }
 
-// Retrieve a value from the Memtable.
+// Retrieve a value from the Memtable. Not thread-safe.
 func (m *Memtable) Get(key string) *MemtableEntry {
-	m.mu.RLock()
 	value := m.data.Get(key)
-	m.mu.RUnlock()
 
 	if value == nil {
 		return nil
@@ -80,10 +70,8 @@ func (m *Memtable) Get(key string) *MemtableEntry {
 	return value.Value.(*MemtableEntry)
 }
 
-// Range scan the Memtable, inclusive of startKey and endKey.
+// Range scan the Memtable, inclusive of startKey and endKey. Not thread-safe.
 func (m *Memtable) RangeScan(startKey string, endKey string) []*MemtableEntry {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 
 	var results []*MemtableEntry
 	// Find the first key that is >= startKey and use the FindNext() method to
@@ -104,36 +92,24 @@ func (m *Memtable) RangeScan(startKey string, endKey string) []*MemtableEntry {
 	return results
 }
 
-// Get the size of the Memtable in bytes.
+// Get the size of the Memtable in bytes. Not thread-safe.
 func (m *Memtable) SizeInBytes() int64 {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	return m.size
 }
 
 // Clears the Memtable.
 func (m *Memtable) Clear() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.data.Init()
 	m.size = 0
 }
 
-// Get the number of entries in the Memtable. Includes tombstones.
+// Get the number of entries in the Memtable. Includes tombstones. Not thread-safe.
 func (m *Memtable) Len() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	return m.data.Len()
 }
 
-// Generates serializable list of memtable entries in sorted order for SSTable.
+// Generates serializable list of memtable entries in sorted order for SSTable. Not thread-safe.
 func (m *Memtable) GetEntries() []*MemtableEntry {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	var results []*MemtableEntry
 	iter := m.data.Front()
 	for iter != nil {
