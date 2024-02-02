@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	golsm "github.com/JyotinderSingh/go-lsm"
+	golsm "github.com/JyotinderSingh/golsm"
 	"github.com/stretchr/testify/assert"
 )
 

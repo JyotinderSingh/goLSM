@@ -1,4 +1,4 @@
-module github.com/JyotinderSingh/go-lsm
+module github.com/JyotinderSingh/golsm
 
 go 1.21.5
 
