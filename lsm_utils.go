@@ -8,7 +8,7 @@ func isSSTableFile(filename string) bool {
 
 // Checks if the given entry is a tombstone. Returns the value itself if not,
 // returns nil if it is.
-func handleValue(value *MemtableEntry) ([]byte, error) {
+func handleValue(value *LSMEntry) ([]byte, error) {
 	if value.Command == Command_DELETE {
 		return nil, nil
 	}

@@ -391,7 +391,7 @@ func TestSSTableIterator(t *testing.T) {
 		defer iter.Close()
 
 		// Read all entries from the SSTable.
-		entries := make([]*golsm.MemtableEntry, 0)
+		entries := make([]*golsm.LSMEntry, 0)
 		for iter != nil {
 			entries = append(entries, iter.Value)
 			iter = iter.Next()

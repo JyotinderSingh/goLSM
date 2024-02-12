@@ -256,7 +256,7 @@ func (l *LSMTree) Get(key string) ([]byte, error) {
 // RangeScan returns all the entries in the LSMTree that have keys in the range
 // [startKey, endKey]. The entries are returned in sorted order of keys.
 func (l *LSMTree) RangeScan(startKey string, endKey string) ([]KVPair, error) {
-	ranges := [][]*MemtableEntry{}
+	ranges := [][]*LSMEntry{}
 	// We take all locks together to ensure a consistent view of the LSMTree for
 	// the range scan.
 	l.mu.RLock()

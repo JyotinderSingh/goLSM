@@ -8,7 +8,7 @@ import (
 
 // Heap entry for the k-way merge algorithm.
 type heapEntry struct {
-	entry     *MemtableEntry
+	entry     *LSMEntry
 	listIndex int // index of the entry source.
 	idx       int // index of the entry in the list.
 	iterator  *SSTableIterator
@@ -48,7 +48,7 @@ func (h *mergeHeap) Pop() interface{} {
 // them into a single range without any duplicate entries.
 // Deduplication is done by keeping track of the most recent entry for each key
 // and discarding the older ones using the timestamp.
-func mergeRanges(ranges [][]*MemtableEntry) []KVPair {
+func mergeRanges(ranges [][]*LSMEntry) []KVPair {
 	minHeap := &mergeHeap{}
 	heap.Init(minHeap)
 
@@ -107,11 +107,11 @@ func mergeRanges(ranges [][]*MemtableEntry) []KVPair {
 // and merges them into a single range without any duplicate entries.
 // Deduplication is done by keeping track of the most recent entry for each key
 // and discarding the older ones using the timestamp.
-func mergeIterators(iterators []*SSTableIterator) []*MemtableEntry {
+func mergeIterators(iterators []*SSTableIterator) []*LSMEntry {
 	minHeap := &mergeHeap{}
 	heap.Init(minHeap)
 
-	var results []*MemtableEntry
+	var results []*LSMEntry
 
 	// Keep track of the most recent entry for each key, in sorted order of keys.
 	seen := skiplist.New(skiplist.String)

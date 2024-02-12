@@ -16,9 +16,9 @@ type SSTable struct {
 }
 
 type SSTableIterator struct {
-	s     *SSTable       // Pointer to the associated SSTable
-	file  *os.File       // File handle for the on-disk SSTable file.
-	Value *MemtableEntry // Current entry
+	s     *SSTable  // Pointer to the associated SSTable
+	file  *os.File  // File handle for the on-disk SSTable file.
+	Value *LSMEntry // Current entry
 }
 
 // Writes a list of MemtableKeyValue to a file in SSTable format.
@@ -31,8 +31,8 @@ type SSTableIterator struct {
 //
 // The entries data is written in as:
 // 1. Size of the entry (OffsetSize)
-// 2. Entry data (MemtableEntry Protobuf)
-func SerializeToSSTable(messages []*MemtableEntry, filename string) (*SSTable, error) {
+// 2. Entry data (LSMEntry Protobuf)
+func SerializeToSSTable(messages []*LSMEntry, filename string) (*SSTable, error) {
 	bloomFilter, index, entriesBuffer, err := buildMetadataAndEntriesBuffer(messages)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (s *SSTable) Close() error {
 
 // Reads the value for a given key from the SSTable. Returns nil if the key is
 // not found.
-func (s *SSTable) Get(key string) (*MemtableEntry, error) {
+func (s *SSTable) Get(key string) (*LSMEntry, error) {
 	// Check if the key is in the bloom filter. If it is not, we can return
 	// immediately.
 	if !s.bloomFilter.Test([]byte(key)) {
@@ -103,18 +103,18 @@ func (s *SSTable) Get(key string) (*MemtableEntry, error) {
 		return nil, err
 	}
 
-	entry := &MemtableEntry{}
+	entry := &LSMEntry{}
 	mustUnmarshal(data, entry)
 
 	// We need to include the tombstones in the range scan. The caller will
-	// need to check the Command field of the MemtableEntry to determine if
+	// need to check the Command field of the LSMEntry to determine if
 	// the entry is a tombstone.
 	return entry, nil
 }
 
 // RangeScan returns all the values in the SSTable between startKey and endKey
 // inclusive.
-func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, error) {
+func (s *SSTable) RangeScan(startKey string, endKey string) ([]*LSMEntry, error) {
 	startOffset, found := findStartOffsetForRangeScan(s.index.Entries, startKey)
 	if !found {
 		return nil, nil
@@ -124,7 +124,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 		return nil, err
 	}
 
-	var results []*MemtableEntry
+	var results []*LSMEntry
 	for {
 		size, err := readDataSize(s.file)
 		if err != nil {
@@ -139,7 +139,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 			return nil, err
 		}
 
-		entry := &MemtableEntry{}
+		entry := &LSMEntry{}
 		mustUnmarshal(data, entry)
 
 		if entry.Key > endKey {
@@ -147,7 +147,7 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 		}
 
 		// We need to include the tombstones in the range scan. The caller will
-		// need to check the Command field of the MemtableEntry to determine if
+		// need to check the Command field of the LSMEntry to determine if
 		// the entry is a tombstone.
 		results = append(results, entry)
 	}
@@ -156,12 +156,12 @@ func (s *SSTable) RangeScan(startKey string, endKey string) ([]*MemtableEntry, e
 }
 
 // GetEntries returns all the values in the SSTable.
-func (s *SSTable) GetEntries() ([]*MemtableEntry, error) {
+func (s *SSTable) GetEntries() ([]*LSMEntry, error) {
 	if _, err := s.file.Seek(int64(s.dataOffset), io.SeekStart); err != nil {
 		return nil, err
 	}
 
-	var results []*MemtableEntry
+	var results []*LSMEntry
 	for {
 		size, err := readDataSize(s.file)
 		if err != nil {
@@ -176,11 +176,11 @@ func (s *SSTable) GetEntries() ([]*MemtableEntry, error) {
 			return nil, err
 		}
 
-		entry := &MemtableEntry{}
+		entry := &LSMEntry{}
 		mustUnmarshal(data, entry)
 
 		// We need to include the tombstones in the range scan. The caller will
-		// need to check the Command field of the MemtableEntry to determine if
+		// need to check the Command field of the LSMEntry to determine if
 		// the entry is a tombstone.
 		results = append(results, entry)
 	}
@@ -196,7 +196,7 @@ func (s *SSTable) Front() *SSTableIterator {
 	if err != nil {
 		return nil
 	}
-	i := &SSTableIterator{s: s, file: file, Value: &MemtableEntry{}}
+	i := &SSTableIterator{s: s, file: file, Value: &LSMEntry{}}
 
 	if _, err := i.file.Seek(int64(i.s.dataOffset), io.SeekStart); err != nil {
 		panic(err)
@@ -236,7 +236,7 @@ func (i *SSTableIterator) Next() *SSTableIterator {
 		panic(err)
 	}
 
-	i.Value = &MemtableEntry{}
+	i.Value = &LSMEntry{}
 	mustUnmarshal(data, i.Value)
 
 	return i

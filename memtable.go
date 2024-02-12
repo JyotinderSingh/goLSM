@@ -27,14 +27,14 @@ func (m *Memtable) Put(key string, value []byte) {
 	if existingEntry != nil {
 		// If the entry already exists, we need to account for the size of the
 		// old value.
-		m.size -= int64(len(existingEntry.Value.(*MemtableEntry).Value))
+		m.size -= int64(len(existingEntry.Value.(*LSMEntry).Value))
 	} else {
 		// If the entry doesn't exist, we need to account for the size of the key.
 		sizeChange += int64(len((key)))
 	}
 
 	// Update with the new entry.
-	entry := getMemtableEntry(key, &value, Command_PUT)
+	entry := getLSMEntry(key, &value, Command_PUT)
 	m.data.Set(key, entry)
 	m.size += sizeChange
 }
@@ -47,17 +47,17 @@ func (m *Memtable) Delete(key string) {
 	if existingEntry != nil {
 		// Only subtract the size of the existing value, not the key,
 		// since the key remains in the memtable with a tombstone marker
-		m.size -= int64(len(existingEntry.Value.(*MemtableEntry).Value))
+		m.size -= int64(len(existingEntry.Value.(*LSMEntry).Value))
 	} else {
 		// If the entry doesn't exist, we need to account for the size of the key.
 		m.size += int64(len(key))
 	}
 
-	m.data.Set(key, getMemtableEntry(key, nil, Command_DELETE))
+	m.data.Set(key, getLSMEntry(key, nil, Command_DELETE))
 }
 
 // Retrieve a value from the Memtable. Not thread-safe.
-func (m *Memtable) Get(key string) *MemtableEntry {
+func (m *Memtable) Get(key string) *LSMEntry {
 	value := m.data.Get(key)
 
 	if value == nil {
@@ -65,15 +65,15 @@ func (m *Memtable) Get(key string) *MemtableEntry {
 	}
 
 	// We need to include the tombstones in the range scan. The caller will
-	// need to check the Command field of the MemtableEntry to determine if
+	// need to check the Command field of the LSMEntry to determine if
 	// the entry is a tombstone.
-	return value.Value.(*MemtableEntry)
+	return value.Value.(*LSMEntry)
 }
 
 // Range scan the Memtable, inclusive of startKey and endKey. Not thread-safe.
-func (m *Memtable) RangeScan(startKey string, endKey string) []*MemtableEntry {
+func (m *Memtable) RangeScan(startKey string, endKey string) []*LSMEntry {
 
-	var results []*MemtableEntry
+	var results []*LSMEntry
 	// Find the first key that is >= startKey and use the FindNext() method to
 	// iterate through the rest of the keys.
 	iter := m.data.Find(startKey)
@@ -83,9 +83,9 @@ func (m *Memtable) RangeScan(startKey string, endKey string) []*MemtableEntry {
 		}
 
 		// We need to include the tombstones in the range scan. The caller will
-		// need to check the Command field of the MemtableEntry to determine if
+		// need to check the Command field of the LSMEntry to determine if
 		// the entry is a tombstone.
-		results = append(results, iter.Value.(*MemtableEntry))
+		results = append(results, iter.Value.(*LSMEntry))
 		iter = iter.Next()
 	}
 
@@ -109,19 +109,19 @@ func (m *Memtable) Len() int {
 }
 
 // Generates serializable list of memtable entries in sorted order for SSTable. Not thread-safe.
-func (m *Memtable) GetEntries() []*MemtableEntry {
-	var results []*MemtableEntry
+func (m *Memtable) GetEntries() []*LSMEntry {
+	var results []*LSMEntry
 	iter := m.data.Front()
 	for iter != nil {
-		results = append(results, iter.Value.(*MemtableEntry))
+		results = append(results, iter.Value.(*LSMEntry))
 		iter = iter.Next()
 	}
 
 	return results
 }
 
-func getMemtableEntry(key string, value *[]byte, command Command) *MemtableEntry {
-	entry := &MemtableEntry{
+func getLSMEntry(key string, value *[]byte, command Command) *LSMEntry {
+	entry := &LSMEntry{
 		Key:       key,
 		Command:   command,
 		Timestamp: time.Now().UnixNano(),

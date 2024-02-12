@@ -10,7 +10,7 @@ enum Command {
   WRITE_SST = 2;
 }
 
-message MemtableEntry {
+message LSMEntry {
   string key = 1;
   Command command = 2;
   optional bytes value = 3;
