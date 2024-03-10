@@ -379,11 +379,17 @@ func (l *LSMTree) compactLevel(compactionCandidate int) error {
 		return err
 	}
 
+	l.levels[compactionCandidate].mu.Lock()
+	l.levels[compactionCandidate+1].mu.Lock()
+
 	// 3. Delete the old SSTables.
 	l.deleteSSTablesAtLevel(compactionCandidate, iterators)
 
 	// 4. Add the new SSTable to the next level.
 	l.addSSTableToLevel(mergedSSTable, compactionCandidate+1)
+
+	l.levels[compactionCandidate].mu.Unlock()
+	l.levels[compactionCandidate+1].mu.Unlock()
 
 	return nil
 }
@@ -480,9 +486,8 @@ func (l *LSMTree) getSSTableHandlesAtLevel(level int) ([]*SSTable, []*SSTableIte
 	return sstables, iterators
 }
 
-// Delete the SSTables identified by the iterators.
+// Delete the SSTables identified by the iterators. Not thread-safe
 func (l *LSMTree) deleteSSTablesAtLevel(level int, iterators []*SSTableIterator) {
-	l.levels[level].mu.Lock()
 	l.levels[level].sstables = l.levels[level].sstables[len(iterators):]
 	for _, it := range iterators {
 		// Delete the file pointed to by the iterator.
@@ -490,17 +495,14 @@ func (l *LSMTree) deleteSSTablesAtLevel(level int, iterators []*SSTableIterator)
 			panic(err)
 		}
 	}
-	l.levels[level].mu.Unlock()
 }
 
-// Add an SSTable to the level.
+// Add an SSTable to the level. Not thread-safe.
 func (l *LSMTree) addSSTableToLevel(sst *SSTable, level int) {
-	l.levels[level].mu.Lock()
 	l.levels[level].sstables = append(l.levels[level].sstables, sst)
 	// Send a signal on the compactionChan to indicate that a new SSTable has
 	// been created.
 	l.compactionChan <- level
-	l.levels[level].mu.Unlock()
 }
 
 // Flush a memtable to an on-disk SSTable.
